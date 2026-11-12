@@ -37,12 +37,12 @@ test('README follows the README standard: title ends in LAB, plain Tier, Repo an
   assert.match(r.split('\n')[0], /^# .* LAB$/);
   assert.match(r, /^Tier: Tester$/m);
   assert.match(r, /^Repo: https:\/\/github\.com\/curtismu7\/mfa-admin-mcp-LAB$/m);
-  assert.match(r, /^Catalog: D3$/m);
+  assert.match(r, /^Catalog: T1 \(placeholder until the shelf assigns one\)$/m);
   const at = (h) => r.indexOf(`\n## ${h}`);
   const order = ['What is simulated', 'Run from a clone', 'Settings file', 'Ports, and what to do if the port is taken', 'Mock and live modes', 'Health, doctor and reset', 'Docker (optional)', 'Tests', 'Troubleshooting', 'Ownership'].map(at);
   assert.ok(order.every((i) => i > 0), order.join());
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'sections are in order');
-  assert.match(r, /lsof -iTCP:7810 -sTCP:LISTEN -n -P/);
+  assert.match(r, /lsof -iTCP:7815 -sTCP:LISTEN -n -P/);
   assert.match(r, /PORT=<other port> npm start/);
   assert.match(r, /util\.parseEnv/);
   assert.doesNotMatch(r, /Rule 17 gap/, 'the diagram is loaded from diagram-studio/1 data, so the gap note is gone');

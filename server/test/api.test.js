@@ -29,7 +29,7 @@ test('connections: region is an allowlist (opt-in for others) and a non-loopback
   assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'eu' }))).status, 201);
   const inter = (redirectUri) => ({ ...workerConn(), auth: 'interactive', redirectUri });
   assert.equal((await s.call('POST', '/api/connections', inter('http://evil.com/api/oauth/callback'))).status, 400);
-  assert.equal((await s.call('POST', '/api/connections', inter('http://localhost:7810/api/oauth/callback'))).status, 201);
+  assert.equal((await s.call('POST', '/api/connections', inter('http://localhost:7815/api/oauth/callback'))).status, 201);
 });
 test('connections: validation, secrets write-only, file mode 600 in a 700 dir', async () => {
   assert.equal((await s.call('POST', '/api/connections', { kind: 'pingone', envId: 'nope', clientId: 'x', clientSecret: 'y' })).status, 400);

@@ -1,10 +1,12 @@
-# PingOne MCP Inspector LAB
+# MFA Admin MCP LAB
 
-A standalone app that connects to PingOne's hosted MCP server (the admin plane) or any HTTP MCP server, lists its tools with a safety class, and calls them. Read-only by default. Mock by default; Live is owner-run.
+A standalone lab for **PingOne's MFA administration MCP tool set** — administer MFA and FIDO policies, notification policies, sender and delivery settings (email, phone, WhatsApp) and OATH tokens through an AI assistant, instead of console pages or hand-written API scripts. Connects to the hosted PingOne MCP server (the admin plane) or any HTTP MCP server, lists its tools with a safety class, and calls them. Read-only by default. Mock by default; Live is owner-run.
+
+Fork of [pingone-mcp-inspector-LAB](https://github.com/curtismu7/pingone-mcp-inspector-LAB): same inspector machinery (safety classes, confirm gate, scan, audit, Mock/Live toggle); the tool catalog, area grouping and story content are refocused on MFA administration.
 
 Tier: Tester
 Repo: https://github.com/curtismu7/mfa-admin-mcp-LAB
-Catalog: D3
+Catalog: T1 (placeholder until the shelf assigns one)
 
 > **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is refused** until the owner opts in, and the banner on every tab, presenter mode included, names the mode. The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
 
@@ -14,7 +16,7 @@ Catalog: D3
 
 **Live mode (owner-run).** The saved connection you use talks to a real server: your own PingOne environment (a worker application, or an interactive admin sign-in with authorization code + PKCE) or any HTTP MCP server you name. Live acts on that server with the credentials you saved. It is refused until the owner sets `MFA_ADMIN_MCP_MODE=live` (see "Mock and live modes"), and even then the netguard lets a connection reach only its own hosts. Not run against a real tenant here: the endpoint shape a tenant answers on, the scopes and consent of the interactive login, and the tool count for a fully privileged worker are UNVERIFIED.
 
-Product source: earlier PingOne MCP work and the `pingone-mcp` skill. Only ideas and endpoint shapes were taken; the code here shares nothing with them.
+Product source: the family demo's PingOne MCP integration (the `pingone-mcp` skill) and PingOne's early-access MFA administration release notes. Only ideas, tool names and endpoint shapes were taken; the code here shares nothing with the family demo.
 
 ## Run from a clone
 
@@ -26,14 +28,14 @@ cd mfa-admin-mcp-LAB
 npm ci
 npm run doctor      # node, mode, bind, data directory, port range, netguard self-test, free port
 npm run build       # builds web/dist, which the server serves itself
-npm start           # then open http://127.0.0.1:7810/
+npm start           # then open http://127.0.0.1:7815/
 ```
 
 Mock mode needs no setup at all: no settings file, no account, no network. Open the page, press **Add mock demo (worker, viewer/admin switch)** on Connections, and try Tools, Raw JSON-RPC, Audit, Stories and Diagram. With no connection saved yet, `GET /api/health` answers `needs-setup` (the app works; it just has nothing to show).
 
 ```bash
-curl -s http://127.0.0.1:7810/api/health
-curl -s http://127.0.0.1:7810/api/info
+curl -s http://127.0.0.1:7815/api/health
+curl -s http://127.0.0.1:7815/api/info
 npm run smoke       # the mock demo end to end against the running app, then removes what it made
 ```
 
@@ -53,19 +55,19 @@ No admin or worker credential belongs in this file, and none is read from it. Th
 
 ## Ports, and what to do if the port is taken
 
-Ports: mfa-admin-mcp listens on 7810 (set with PORT, default 7810).
-Port range for this app: 7810-5249.
+Ports: mfa-admin-mcp listens on 7815 (set with PORT, default 7815).
+Port range for this app: 7815-7819.
 
 If the port is taken:
 1. Find what is using it:
-   lsof -iTCP:7810 -sTCP:LISTEN -n -P
+   lsof -iTCP:7815 -sTCP:LISTEN -n -P
 2. If it is an old copy of this app, stop that process: kill <PID>.
 3. If it is something else, stop it, or start this app on another port:
    PORT=<other port> npm start
 4. Do not use 8080, 5173, 3000, 4000, 4400, 4510, 4600-4601, 18080, 19080 or 19090.
    Those are taken by other demos or other tools.
 
-Other ports this app uses, all inside 7810-5249: the Vite dev server on 5202 (`VITE_PORT`), `npm run e2e` on 5231 (`E2E_PORT`), and the Docker host port `HOST_PORT` (default 7810). The in-process mock listens on an ephemeral loopback port, and the tests use ephemeral ports. The port board lists the block 5200-5249 for another app (p1-third-party-exchange, which defaults to 5200); this app keeps the 7810 it already used. That overlap is for the owner to settle (UNVERIFIED).
+Other ports this app uses (dev only): the Vite dev server on 5202 (`VITE_PORT`), `npm run e2e` on 5231 (`E2E_PORT`), and the Docker host port `HOST_PORT` (default 7815). The in-process mock listens on an ephemeral loopback port, and the tests use ephemeral ports. The Vite dev server (5202) and the e2e port (5231) are ephemeral dev conveniences outside the app's declared port range; the published Docker port is 7815, loopback only.
 
 ## Mock and live modes
 
@@ -91,12 +93,12 @@ npm run smoke    # health, info, the mock demo end to end, Reset, against the ru
 ## Docker (optional)
 
 ```bash
-HOST_PORT=7810 docker compose up --build -d    # OrbStack, never Docker Desktop
-curl -s http://127.0.0.1:7810/api/health
+HOST_PORT=7815 docker compose up --build -d    # OrbStack, never Docker Desktop
+curl -s http://127.0.0.1:7815/api/health
 docker compose down
 ```
 
-The container publishes on `127.0.0.1` only (a test pins it), runs as the non-root `node` user with a read-only root filesystem, all capabilities dropped and a `/data` volume for the saved connections. The server binds `0.0.0.0` inside it only because `MFAADM_BIND` is set in the image, and `MFAADM_CONTAINER=1` (also set by the image) is what lets Live accept that bind. Live is off in the container unless you start it with `MFA_ADMIN_MCP_MODE=live` in your shell. For the interactive sign-in (Live), register `http://localhost:<HOST_PORT>/api/oauth/callback` on your OAuth application: the app refuses a redirect URI whose port differs from the port the page is served on. Check a running instance by content with `npm run verify-running -- http://localhost:7810 [--container <name>]` (mock stub only).
+The container publishes on `127.0.0.1` only (a test pins it), runs as the non-root `node` user with a read-only root filesystem, all capabilities dropped and a `/data` volume for the saved connections. The server binds `0.0.0.0` inside it only because `MFAADM_BIND` is set in the image, and `MFAADM_CONTAINER=1` (also set by the image) is what lets Live accept that bind. Live is off in the container unless you start it with `MFA_ADMIN_MCP_MODE=live` in your shell. For the interactive sign-in (Live), register `http://localhost:<HOST_PORT>/api/oauth/callback` on your OAuth application: the app refuses a redirect URI whose port differs from the port the page is served on. Check a running instance by content with `npm run verify-running -- http://localhost:7815 [--container <name>]` (mock stub only).
 
 ## Tests
 
@@ -108,7 +110,7 @@ On Node 26, with the counts from the last run in this repo: 79 server tests (nod
 
 ## Troubleshooting
 
-- **The port is taken, or "refusing to start: port-range".** See "Ports, and what to do if the port is taken". `PORT` must be inside 7810-5249.
+- **The port is taken, or "refusing to start: port-range".** See "Ports, and what to do if the port is taken". `PORT` must be inside 7815-7819.
 - **`GET /` answers a JSON 404.** The UI is not built. Run `npm run build`, then restart.
 - **Pressing Live does nothing but show a message.** That is the designed behaviour: Live is refused until `MFA_ADMIN_MCP_MODE=live` is set in `~/Development/.env` (or the environment), then restart the server.
 - **A Live connection answers 403 `live_refused`.** Same cause. It was saved while Live was allowed; set the key again, or delete the connection.
@@ -140,8 +142,7 @@ Safety notes: loopback bind (refused otherwise unless `MFAADM_BIND` is set), Hos
 - **The SE k8s mock build is deferred (owner, 2026-10-31).** Docker is the only packaged form; there are no manifests or deploy scripts.
 - **No per-workspace isolation.** Tester tier does not require it.
 - **The PingOne worker preset reads a local credentials file** (`worker.env`, outside the repo and outside the shared settings file). Whether that fits the rule that worker credentials live only in the provisioning file is for the owner to decide (UNVERIFIED).
-- **Catalog id D3** comes from the old repo's shelf entry; it is not re-checked against the catalog here.
-- **The port block overlaps** another app's on the board (see Ports).
+- **Catalog id T1** is a placeholder until the shelf assigns the real one; it is not re-checked against the catalog here.
 - **`npm run e2e` and the Playwright proof** are not part of `npm test` or CI.
 
 ## Docs
@@ -150,7 +151,7 @@ Safety notes: loopback bind (refused otherwise unless `MFAADM_BIND` is set), Hos
 
 ## Packaging files
 
-`content-pack.json` is the Learning Hub pack (`demo-content-pack/1`), generated by `npm run content-pack` (it also validates; do not hand-edit it). `docs/shelf-entry.json` is the Demo Shelf registry entry (port 7810, catalog id `D3`, a relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's validation rules, tested against the entry.
+`content-pack.json` is the Learning Hub pack (`demo-content-pack/1`), generated by `npm run content-pack` (it also validates; do not hand-edit it). `docs/shelf-entry.json` is the Demo Shelf registry entry (port 7815, catalog id `D3`, a relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's validation rules, tested against the entry.
 
 ## Layout
 
@@ -161,5 +162,5 @@ web/            React + Vite UI (vitest + testing-library tests); styles/standal
 scripts/        doctor, reset, smoke, e2e, verify-running, content-pack and talk-track builders, compose/docs/repo/shelf/hooks tests
 docs/           architecture, security, classification, live-checks, references, talk-track, schema, shelf entry
 content/        terms.json, the source of the pack's glossary
-Dockerfile, docker-compose.yml   loopback-only publish (OrbStack: HOST_PORT=7810 docker compose up --build -d)
+Dockerfile, docker-compose.yml   loopback-only publish (OrbStack: HOST_PORT=7815 docker compose up --build -d)
 ```

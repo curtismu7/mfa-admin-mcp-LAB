@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { bindHost, isLoopbackHost } from './security.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const DEFAULT_PORT = 7810;
-export const PORT_MIN = 7810;
+export const DEFAULT_PORT = 7815;
+export const PORT_MIN = 7815;
 export const PORT_MAX = 7819;
 export const port = (env = process.env) => Number(env.PORT) || DEFAULT_PORT;
 export const portInRange = (p) => Number.isInteger(p) && p >= PORT_MIN && p <= PORT_MAX;

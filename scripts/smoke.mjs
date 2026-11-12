@@ -2,10 +2,10 @@
 // The minimum end-to-end check against a RUNNING app (npm start, or the Docker container): health, the mode, the mock demo end to end
 // (add, test, list tools, scan, one read call, delete), and Reset. It uses the mock demo only and removes the connection it made, so
 // it never reaches a real server even if Live is set up on this machine. Prints one line per check, exits 1 on a failure. Loopback only.
-//   node scripts/smoke.mjs [base-url]      (default http://127.0.0.1:${PORT:-7810})
+//   node scripts/smoke.mjs [base-url]      (default http://127.0.0.1:${PORT:-7815})
 import { isLoopbackHost } from '../server/src/security.js';
 
-const base = new URL(process.argv[2] || `http://127.0.0.1:${process.env.PORT || 7810}`);
+const base = new URL(process.argv[2] || `http://127.0.0.1:${process.env.PORT || 7815}`);
 if (!isLoopbackHost(base.hostname)) { console.error(`refusing ${base.hostname}: loopback only`); process.exit(1); }
 let failed = 0;
 const check = (ok, what) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}`); if (!ok) failed += 1; };

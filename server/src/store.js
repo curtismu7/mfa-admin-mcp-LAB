@@ -56,7 +56,7 @@ export function createStore({ dir }) {
         rec.redirectUri = str(b.redirectUri, 300);
         if (!rec.redirectUri) throw new Error('redirectUri is required for interactive auth (the loopback URI registered on your OAuth application)');
         let ru; try { ru = new URL(rec.redirectUri); } catch { ru = null; }
-        if (!ru || ru.protocol !== 'http:' || !isLoopbackHost(ru.hostname)) throw new Error('redirectUri must be an http loopback URI such as http://localhost:7810/api/oauth/callback');
+        if (!ru || ru.protocol !== 'http:' || !isLoopbackHost(ru.hostname)) throw new Error('redirectUri must be an http loopback URI such as http://localhost:7815/api/oauth/callback');
       }
     } else {
       rec.url = cleanUrl(b.url);

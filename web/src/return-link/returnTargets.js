@@ -20,7 +20,7 @@ export const RETURN_TARGETS = Object.freeze({
   'ai-demo-standalone': Object.freeze({
     label: 'AI Demo Standalone',
     proxyPath: '/ai-demo-standalone/',
-    directUrl: 'http://127.0.0.1:7810/',
+    directUrl: 'http://127.0.0.1:7815/',
   }),
 });
 

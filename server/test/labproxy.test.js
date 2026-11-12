@@ -28,7 +28,7 @@ const call = (port, method, url, { host, headers = {}, body } = {}) => new Promi
 test('LAB_ALLOWED_HOSTS: the lab-proxy name is served on any port, other names stay 403', async () => {
   const s = await startApp({ env: { LAB_ALLOWED_HOSTS: `${PROXY_HOST}, Other.Example` } });
   try {
-    for (const host of [`${PROXY_HOST}:7810`, PROXY_HOST, 'MFA-Admin-Mcp.Local.Ping-Devops.com:8443', 'other.example', 'OTHER.example:8443', `127.0.0.1:${s.port}`]) {
+    for (const host of [`${PROXY_HOST}:7815`, PROXY_HOST, 'MFA-Admin-Mcp.Local.Ping-Devops.com:8443', 'other.example', 'OTHER.example:8443', `127.0.0.1:${s.port}`]) {
       assert.equal((await call(s.port, 'GET', '/api/info', { host })).status, 200, host);
     }
     for (const host of ['evil.example.com', `${PROXY_HOST}.evil.com`, 'xmfa-admin-mcp.local.ping-devops.com', 'local.ping-devops.com:8443', 'evil-local.ping-devops.com']) {
@@ -47,12 +47,12 @@ test('a bad LAB_ALLOWED_HOSTS throws before anything starts and fails the doctor
   assert.deepEqual(allowedHostNames({ MFAADM_ALLOWED_HOSTS: 'Old.Example' }), ['old.example']);
   const both = await startApp({ env: { MFAADM_ALLOWED_HOSTS: 'old.example', LAB_ALLOWED_HOSTS: PROXY_HOST } });
   try {
-    for (const host of ['old.example:7810', PROXY_HOST]) assert.equal((await call(both.port, 'GET', '/api/info', { host })).status, 200, host);
+    for (const host of ['old.example:7815', PROXY_HOST]) assert.equal((await call(both.port, 'GET', '/api/info', { host })).status, 200, host);
     assert.equal((await call(both.port, 'GET', '/api/info', { host: 'new.example' })).status, 403);
   } finally { await both.close(); }
   const plain = await startApp();
   try {
-    assert.equal((await call(plain.port, 'GET', '/api/info', { host: `${PROXY_HOST}:7810` })).status, 403);
+    assert.equal((await call(plain.port, 'GET', '/api/info', { host: `${PROXY_HOST}:7815` })).status, 403);
     assert.equal((await call(plain.port, 'GET', '/api/info', { host: `127.0.0.1:${plain.port}` })).status, 200);
   } finally { await plain.close(); }
 });
@@ -60,7 +60,7 @@ test('a bad LAB_ALLOWED_HOSTS throws before anything starts and fails the doctor
 test('behind the lab-proxy: a write is accepted only with the proxy\'s forwarded origin AND an allowed Host', async () => {
   const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
   try {
-    const proxyHost = `${PROXY_HOST}:7810`;
+    const proxyHost = `${PROXY_HOST}:7815`;
     const via = (headers, host = proxyHost) => call(s.port, 'POST', '/api/reset', { host, headers, body: {} });
     // what the browser and the proxy really send for a same-origin POST
     assert.equal((await via({ ...FWD, origin: PROXY_ORIGIN, 'sec-fetch-site': 'same-origin' })).status, 200);
@@ -85,7 +85,7 @@ test('behind the lab-proxy: a write is accepted only with the proxy\'s forwarded
   for (const [env, re] of [[{ MFAADM_ALLOWED_HOSTS: PROXY_HOST }, /cross_origin/], [{}, /bad_host/]]) {
     const x = await startApp({ env });
     try {
-      const r = await call(x.port, 'POST', '/api/reset', { host: `${PROXY_HOST}:7810`, body: {}, headers: { ...FWD, origin: PROXY_ORIGIN } });
+      const r = await call(x.port, 'POST', '/api/reset', { host: `${PROXY_HOST}:7815`, body: {}, headers: { ...FWD, origin: PROXY_ORIGIN } });
       assert.equal(r.status, 403);
       assert.match(r.body, re);
     } finally { await x.close(); }

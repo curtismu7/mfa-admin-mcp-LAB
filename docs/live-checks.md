@@ -5,7 +5,7 @@ Nothing in this repo has talked to a real PingOne tenant. Run these yourself, wi
 ## Before you start
 
 - Your own environment id, region, a worker application (client id, secret) with the least roles you can, and optionally an OAuth application with a pre-registered loopback redirect URI. None of these are ever committed; you type them into a connection.
-- Run the app (`npm start`, or `HOST_PORT=7810 docker compose up --build -d`). Open `http://localhost:7810`.
+- Run the app (`npm start`, or `HOST_PORT=7815 docker compose up --build -d`). Open `http://localhost:7815`.
 - Writes stay **off** until check 12.
 
 ## Checks

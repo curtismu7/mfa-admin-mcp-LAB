@@ -12,7 +12,7 @@ RUN npm run build -w web
 
 FROM node:26-alpine
 WORKDIR /app
-ENV NODE_ENV=production PORT=7810 MFAADM_DATA_DIR=/data
+ENV NODE_ENV=production PORT=7815 MFAADM_DATA_DIR=/data
 COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY web/package.json web/
@@ -24,7 +24,7 @@ COPY --from=web /app/web/dist web/dist
 # The data dir holds the saved connections (mode 600 file, including worker secrets) and the audit log: mode 700, owned by the non-root user.
 RUN mkdir -p /data && chown node:node /data && chmod 700 /data
 USER node
-EXPOSE 7810
+EXPOSE 7815
 VOLUME /data
 # Inside the container the server must listen on all interfaces, so MFAADM_BIND is set here on purpose.
 # The compose file publishes the port on 127.0.0.1 only; do not publish it more widely: Live can act on a PingOne tenant.

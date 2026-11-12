@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-PingOne MCP Inspector LAB (Tier: Tester, catalog D3, port 7810, range 7810-5249). Connects to PingOne's hosted MCP server or any HTTP MCP server, lists tools with a safety class (read / write / destructive), calls them behind a confirm gate, scans the tool metadata, keeps a redacted audit log. Mock (the in-process mock demo) is the default; Live is owner-run and refused until opted in. Details: [README.md](README.md), [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md). Presenter script: [docs/talk-track.md](docs/talk-track.md).
+MFA Admin MCP LAB (Tier: Tester, port 7815, range 7815-7819). A fork of pingone-mcp-inspector-LAB focused on PingOne's MFA administration MCP tool set: connects to the hosted PingOne MCP server (or any HTTP MCP server), lists tools with a safety class (read / write / destructive), calls them behind a confirm gate, scans the tool metadata, keeps a redacted audit log. The mock catalog is the MFA administration tool set (environment MFA settings, device-authentication and FIDO policies, notification policies, OATH tokens, email/phone/WhatsApp delivery settings) plus a small general-admin sample. Mock (the in-process mock demo) is the default; Live is owner-run and refused until opted in. Details: [README.md](README.md), [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md). Presenter script: [docs/talk-track.md](docs/talk-track.md).
 
 ## Commands (from package.json)
 
@@ -8,7 +8,7 @@ PingOne MCP Inspector LAB (Tier: Tester, catalog D3, port 7810, range 7810-5249)
 npm ci
 npm test             # server (node --test test/*.test.js) + web (vitest) + scripts/*.test.mjs
 npm run build        # builds web/dist, served by the server itself
-npm start            # http://127.0.0.1:7810/  (PORT to change)
+npm start            # http://127.0.0.1:7815/  (PORT to change)
 npm run dev          # API with --watch, Vite on 5202
 npm run doctor       # node 26, mode, data dir, bind, port range, netguard self-test, free port (PORT=5230 to dodge a running copy)
 npm run reset        # POST /api/reset on the running app
@@ -18,7 +18,7 @@ npm run content-pack # regenerates and validates content-pack.json (do not hand-
 npm run talk-track   # regenerates docs/talk-track.md from the stories (a test fails on drift)
 ```
 
-Docker (OrbStack, never Docker Desktop): `HOST_PORT=7810 docker compose up --build -d` (publishes `127.0.0.1:` only). Node 26 only.
+Docker (OrbStack, never Docker Desktop): `HOST_PORT=7815 docker compose up --build -d` (publishes `127.0.0.1:` only). Node 26 only.
 
 ## Rules that bite here
 
@@ -46,5 +46,5 @@ Docker (OrbStack, never Docker Desktop): `HOST_PORT=7810 docker compose up --bui
 ## Shelf and content pack
 
 - Edit `content/terms.json`, then `npm run content-pack`. Catalog id D3 appears in the shelf entry, the pack and the README; a test pins all three.
-- The shelf entry is `docs/shelf-entry.json` (port 7810, relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's rules. Change the port or id only with the shelf owner.
+- The shelf entry is `docs/shelf-entry.json` (port 7815, relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's rules. Change the port or id only with the shelf owner.
 - Run check-drift, check-css and conformance by hand: `bash ~/Development/AI-DEMO-Standalone/scripts/check-drift.sh .`, `node ~/Development/demo-kit-base-rule18-warn/scripts/conformance.mjs . --new`.

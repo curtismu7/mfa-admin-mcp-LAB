@@ -2,12 +2,12 @@
 // Reset a running app: POST /api/reset clears the audit history, every token and half-finished sign-in, turns writes off and puts the
 // mock demo's fake tenant back. Saved connections and their secrets are kept. The UI Reset button also puts the diagram boxes back
 // where they started; a script cannot move boxes in a browser tab.
-//   node scripts/reset.mjs [base-url]      (default http://127.0.0.1:${PORT:-7810})
+//   node scripts/reset.mjs [base-url]      (default http://127.0.0.1:${PORT:-7815})
 // Loopback only: refuses any other host. Needs the server already running; sends the same-origin header the server requires.
 import { pathToFileURL } from 'node:url';
 import { isLoopbackHost } from '../server/src/security.js';
 
-export async function reset(base = `http://127.0.0.1:${process.env.PORT || 7810}`) {
+export async function reset(base = `http://127.0.0.1:${process.env.PORT || 7815}`) {
   const u = new URL(base);
   if (!isLoopbackHost(u.hostname)) throw new Error(`refusing ${u.hostname}: loopback only`);
   const r = await fetch(new URL('/api/reset', u), { method: 'POST', headers: { 'content-type': 'application/json', origin: u.origin }, body: '{}' });

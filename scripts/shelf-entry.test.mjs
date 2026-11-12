@@ -11,24 +11,24 @@ test('docs/shelf-entry.json passes the shelf registry rules (copied into scripts
   assert.deepEqual(shelfProblems(entry.demos), []);
 });
 
-test('the entry matches this app: id, catalog id D3 (also in the content pack and the README), port 7810, /api/health, a relative compose file', () => {
+test('the entry matches this app: id, catalog id T1 (also in the content pack and the README), port 7815, /api/health, a relative compose file', () => {
   const [d] = entry.demos;
   assert.equal(d.id, 'mfa-admin-mcp');
-  assert.equal(d.catalogId, 'D3');
+  assert.equal(d.catalogId, 'T1');
   assert.equal(d.kind, 'Tester');
   assert.equal(d.composeFile, 'mfa-admin-mcp-LAB/docker-compose.yml');
   assert.ok(!path.isAbsolute(d.composeFile), 'composeFile must be relative or a placeholder');
   assert.ok(!/\/Users\//.test(JSON.stringify(entry)), 'no absolute home path');
-  assert.equal(d.url, 'http://localhost:7810');
+  assert.equal(d.url, 'http://localhost:7815');
   assert.equal(d.healthPath, '/api/health');
-  assert.equal(JSON.parse(read('../content-pack.json')).demo.catalog, 'D3');
-  assert.match(read('../README.md'), /^Catalog: D3$/m);
+  assert.equal(JSON.parse(read('../content-pack.json')).demo.catalog, 'T1');
+  assert.match(read('../README.md'), /^Catalog: T1 \(placeholder until the shelf assigns one\)$/m);
   const pkg = JSON.parse(read('../package.json'));
   assert.ok(pkg.scripts.start && pkg.scripts.doctor);
-  assert.match(read('../docker-compose.yml'), /127\.0\.0\.1:\$\{HOST_PORT:-7810\}:7810/);
+  assert.match(read('../docker-compose.yml'), /127\.0\.0\.1:\$\{HOST_PORT:-7815\}:7815/);
 });
 
 test('the copied rules reject a bad entry', () => {
-  const bad = [{ ...entry.demos[0], url: 'http://evil.example:7810', healthPath: '//x', composeFile: '../x;y.yml', surprise: 1 }];
+  const bad = [{ ...entry.demos[0], url: 'http://evil.example:7815', healthPath: '//x', composeFile: '../x;y.yml', surprise: 1 }];
   assert.ok(shelfProblems(bad).length >= 4);
 });

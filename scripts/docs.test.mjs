@@ -36,7 +36,7 @@ test('docs/shelf-entry.json is well-formed, loopback-only, and matches the compo
   const [d] = demos;
   assert.match(d.id, /^[a-z0-9-]{2,41}$/);
   assert.equal(d.id, 'mfa-admin-mcp');
-  assert.match(d.url, /^http:\/\/localhost:7810$/);
+  assert.match(d.url, /^http:\/\/localhost:7815$/);
   assert.equal(d.healthPath, '/api/health');
   assert.match(d.composeFile, /\/docker-compose\.yml$/);
   assert.ok(!d.composeFile.startsWith('/'), 'a portable (relative) compose file');

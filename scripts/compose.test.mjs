@@ -21,13 +21,13 @@ export function publishedPorts(text) {
 const compose = fs.readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
 const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 
-test('docker-compose.yml publishes only on 127.0.0.1, mapping to the container port 7810', () => {
+test('docker-compose.yml publishes only on 127.0.0.1, mapping to the container port 7815', () => {
   const ports = publishedPorts(compose);
   assert.equal(ports.length, 1, 'exactly one published port');
-  for (const p of ports) assert.match(p, /^127\.0\.0\.1:(\$\{HOST_PORT:-7810\}|\d+):7810$/, `${p} must start with 127.0.0.1: and map to 7810`);
+  for (const p of ports) assert.match(p, /^127\.0\.0\.1:(\$\{HOST_PORT:-7815\}|\d+):7815$/, `${p} must start with 127.0.0.1: and map to 7815`);
 });
 test('the parser flags an unbound or wildcard publish', () => {
-  for (const bad of ['- "7810:7810"', '- "0.0.0.0:7810:7810"', '- 7810', '- "[::]:7810:7810"']) {
+  for (const bad of ['- "7815:7815"', '- "0.0.0.0:7815:7815"', '- 7815', '- "[::]:7815:7815"']) {
     const ports = publishedPorts(`services:\n  a:\n    ports:\n      ${bad}\n`);
     assert.equal(ports.length, 1);
     assert.doesNotMatch(ports[0], /^127\.0\.0\.1:/);
