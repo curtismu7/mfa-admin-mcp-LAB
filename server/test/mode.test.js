@@ -96,7 +96,7 @@ test('modeFrom: mock by default, live only when asked, anything else is an error
 test('the shared settings file: only the listed keys are taken, nothing else enters the environment, no file means defaults', () => {
   const dir = tmpDir(); const file = path.join(dir, '.env');
   fs.writeFileSync(file, `${MODE_KEY}=live\nPINGONE_ENVIRONMENT_ID=${ENV_ID}\nPINGONE_REGION=eu\nPINGONE_CLIENT_SECRET=do-not-take\nMODE=live\nPORT=1\nOTHER_APP_KEY=x\n`, { mode: 0o600 });
-  assert.deepEqual(SETTINGS_KEYS.sort(), ['PINGONE_ENVIRONMENT_ID', 'PINGONE_MCP_INSPECTOR_MODE', 'PINGONE_REGION']);
+  assert.deepEqual(SETTINGS_KEYS.sort(), ['MFA_ADMIN_MCP_MODE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION']);
   assert.deepEqual(Object.keys(readSharedSettings(file)).sort(), SETTINGS_KEYS);
   const env = applySharedSettings({ PINGONE_REGION: 'asia' }, file);
   assert.equal(env.PINGONE_REGION, 'asia', 'the environment wins over the file');

@@ -13,7 +13,7 @@ export async function startApp({ env = {}, dir = tmpDir(), mock, now, fetchImpl 
   const theMock = mock || createMock();
   if (!theMock.base) await theMock.start();
   // The owner's Live opt-in is on by default here: most tests drive saved Live connections against loopback stubs. mode.test.js turns it off.
-  const app = createApp({ env: { PINGONE_MCP_INSPECTOR_MODE: 'live', ...env, MFAADM_DATA_DIR: dir }, store: createStore({ dir }), mock: theMock, now, ...(fetchImpl ? { fetchImpl } : {}) });
+  const app = createApp({ env: { MFA_ADMIN_MCP_MODE: 'live', ...env, MFAADM_DATA_DIR: dir }, store: createStore({ dir }), mock: theMock, now, ...(fetchImpl ? { fetchImpl } : {}) });
   const srv = await startHttpServer({ port: 0, host: '127.0.0.1', app });
   const origin = `http://127.0.0.1:${srv.port}`;
   async function call(method, p, body, { headers = {}, origin: o = origin, redirect = 'follow' } = {}) {

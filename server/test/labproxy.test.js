@@ -28,7 +28,7 @@ const call = (port, method, url, { host, headers = {}, body } = {}) => new Promi
 test('LAB_ALLOWED_HOSTS: the lab-proxy name is served on any port, other names stay 403', async () => {
   const s = await startApp({ env: { LAB_ALLOWED_HOSTS: `${PROXY_HOST}, Other.Example` } });
   try {
-    for (const host of [`${PROXY_HOST}:7810`, PROXY_HOST, 'PingOne-MCP-Inspector.Local.Ping-Devops.com:8443', 'other.example', 'OTHER.example:8443', `127.0.0.1:${s.port}`]) {
+    for (const host of [`${PROXY_HOST}:7810`, PROXY_HOST, 'MFA-Admin-Mcp.Local.Ping-Devops.com:8443', 'other.example', 'OTHER.example:8443', `127.0.0.1:${s.port}`]) {
       assert.equal((await call(s.port, 'GET', '/api/info', { host })).status, 200, host);
     }
     for (const host of ['evil.example.com', `${PROXY_HOST}.evil.com`, 'xmfa-admin-mcp.local.ping-devops.com', 'local.ping-devops.com:8443', 'evil-local.ping-devops.com']) {

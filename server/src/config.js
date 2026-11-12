@@ -11,7 +11,7 @@ import { bindHost, isLoopbackHost } from './security.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const DEFAULT_PORT = 7810;
 export const PORT_MIN = 7810;
-export const PORT_MAX = 5249;
+export const PORT_MAX = 7819;
 export const port = (env = process.env) => Number(env.PORT) || DEFAULT_PORT;
 export const portInRange = (p) => Number.isInteger(p) && p >= PORT_MIN && p <= PORT_MAX;
 export const dataDir = (env = process.env) => path.resolve(root, env.MFAADM_DATA_DIR || '.data');

@@ -19,7 +19,7 @@ export const conn = (o = {}) => ({ id: "c1", kind: "pingone", label: "Mock demo"
 
 // A tiny fake of this app's API. `calls` records every request; handlers can be overridden per test.
 export const LIVE_OK = { available: true, failed: [], needs: [] };
-export const LIVE_REFUSED = { available: false, failed: ["owner-opt-in"], needs: ["PINGONE_MCP_INSPECTOR_MODE=live is set in the shared settings file"] };
+export const LIVE_REFUSED = { available: false, failed: ["owner-opt-in"], needs: ["MFA_ADMIN_MCP_MODE=live is set in the shared settings file"] };
 export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK } = {}) {
   const state = { conns: structuredClone(conns), calls: [], audit };
   const json = (status, body) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });

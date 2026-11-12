@@ -1,6 +1,6 @@
 # Two stages: the first builds the web UI, the final image carries the server and the built UI only.
 # Node 26 only (rulebook). Docker on OrbStack, never Docker Desktop.
-# The image holds no tenant value and no secret. Live is off unless the owner passes PINGONE_MCP_INSPECTOR_MODE=live at run time.
+# The image holds no tenant value and no secret. Live is off unless the owner passes MFA_ADMIN_MCP_MODE=live at run time.
 FROM node:26-alpine AS web
 WORKDIR /app
 COPY package.json package-lock.json ./

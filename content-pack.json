@@ -1,11 +1,11 @@
 {
   "schema": "demo-content-pack/1",
   "id": "mfa-admin-mcp",
-  "title": "PingOne MCP Inspector LAB",
+  "title": "MFA Admin MCP LAB",
   "version": "0.3.0",
   "demo": {
     "id": "mfa-admin-mcp",
-    "name": "PingOne MCP Inspector LAB",
+    "name": "MFA Admin MCP LAB",
     "catalog": "D3",
     "baseUrl": "http://localhost:7810",
     "doctor": "/api/health",
