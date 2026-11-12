@@ -1,13 +1,13 @@
 {
   "schema": "demo-content-pack/1",
-  "id": "pingone-mcp-inspector",
+  "id": "mfa-admin-mcp",
   "title": "PingOne MCP Inspector LAB",
   "version": "0.3.0",
   "demo": {
-    "id": "pingone-mcp-inspector",
+    "id": "mfa-admin-mcp",
     "name": "PingOne MCP Inspector LAB",
     "catalog": "D3",
-    "baseUrl": "http://localhost:5201",
+    "baseUrl": "http://localhost:7810",
     "doctor": "/api/health",
     "tags": [
       "mcp",

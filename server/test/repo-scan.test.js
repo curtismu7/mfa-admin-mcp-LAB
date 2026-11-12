@@ -13,7 +13,7 @@ function* walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) 
 test('no UUID other than the placeholder, no private host, no key material', () => {
   const bad = [];
   const privateHost = new RegExp(['ping', 'devops'].join('-') + '\\.com', 'i');
-  const allowedHosts = new RegExp('(?:pingone-mcp-inspector\\.)?local\\.' + ['ping', 'devops'].join('-') + '\\.com', 'gi');
+  const allowedHosts = new RegExp('(?:mfa-admin-mcp\\.)?local\\.' + ['ping', 'devops'].join('-') + '\\.com', 'gi');
   for (const f of walk(root)) {
     const t = fs.readFileSync(f, 'utf8');
     for (const m of t.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || []) if (m !== PLACEHOLDER) bad.push(`${f}: uuid ${m}`);

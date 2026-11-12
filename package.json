@@ -1,9 +1,9 @@
 {
-  "name": "pingone-mcp-inspector-lab",
+  "name": "mfa-admin-mcp-lab",
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "PingOne MCP Inspector LAB: connect to PingOne's hosted MCP server (or any MCP server), list its tools with a safety class, and call them read-only by default. Mock by default; Live is owner-run.",
+  "description": "MFA Admin MCP LAB: connect to PingOne's hosted MCP server (or any MCP server), list its tools with a safety class, and call them read-only by default. Mock by default; Live is owner-run.",
   "license": "MIT",
   "workspaces": [
     "server",

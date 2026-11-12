@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { allPassed, runChecks as defaultChecks } from './doctor.js';
 
 const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-const DEMO = { id: 'pingone-mcp-inspector', name: 'PingOne MCP Inspector LAB', version };
+const DEMO = { id: 'mfa-admin-mcp', name: 'MFA Admin MCP LAB', version };
 
 export function createHealth({ store, runChecks = defaultChecks, env = process.env, now = () => new Date(), intervalMs = 60_000 }) {
   let last = { state: 'unknown', at: null, runtime: 'offline' };

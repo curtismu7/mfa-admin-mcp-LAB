@@ -6,7 +6,7 @@ import { installNetguard } from './netguard.js';
 import { applySharedSettings } from './settings.js';
 import { assertBindAllowed, bindHost } from './security.js';
 
-// Boot on `port` (0 = ephemeral). Refuses a non-loopback host unless P1MCP_BIND is set.
+// Boot on `port` (0 = ephemeral). Refuses a non-loopback host unless MFAADM_BIND is set.
 export function startHttpServer({ port = configPort(), host = bindHost(), app = createApp() } = {}) {
   assertBindAllowed(host);
   return new Promise((resolve, reject) => {
@@ -28,6 +28,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   const { url } = await startHttpServer();
-  console.log(`[p1mcp] listening on ${url} (loopback unless P1MCP_BIND is set)`);
+  console.log(`[p1mcp] listening on ${url} (loopback unless MFAADM_BIND is set)`);
   process.on('SIGTERM', () => process.exit(0));
 }

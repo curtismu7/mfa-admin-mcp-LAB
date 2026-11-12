@@ -100,7 +100,7 @@ test('the loader refuses to start on an invalid, missing or unreadable file', ()
   for (const [what, edit, re] of cases) {
     const dir = brokenDir('worker', edit);
     assert.throws(() => createDiagrams({ dir }), re, what);
-    assert.throws(() => createApp({ env: { P1MCP_DATA_DIR: tmpDir() }, diagramsDir: dir }), re, `${what}: createApp (so the server) does not start`);
+    assert.throws(() => createApp({ env: { MFAADM_DATA_DIR: tmpDir() }, diagramsDir: dir }), re, `${what}: createApp (so the server) does not start`);
   }
   const garbage = tmpDir(); for (const n of DIAGRAM_NAMES) fs.writeFileSync(path.join(garbage, `${n}.json`), '{ not json');
   assert.throws(() => createDiagrams({ dir: garbage }), /cannot be read as JSON/);
@@ -117,6 +117,6 @@ test('lookups never reach object prototypes: only the allow-list names resolve',
 });
 
 test('doctor has a diagrams check that passes on the shipped files', () => {
-  const c = runChecks({ env: { ...process.env, P1MCP_DATA_DIR: tmpDir() } }).find((x) => x.id === 'diagrams');
+  const c = runChecks({ env: { ...process.env, MFAADM_DATA_DIR: tmpDir() } }).find((x) => x.id === 'diagrams');
   assert.equal(c.level, 'pass'); assert.match(c.detail, /2 diagrams are valid diagram-studio\/1 data/);
 });

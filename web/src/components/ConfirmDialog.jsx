@@ -13,7 +13,7 @@ export default function ConfirmDialog({ tool, gate, onConfirm, onCancel, busy })
   const heading = `${needName ? "Confirm a destructive call" : "Confirm a write"}: ${tool}`;
   return (
     <FloatingDialog isOpen onClose={onCancel} title={heading} ariaLabel={heading} footer={null} className="confirm-dialog"
-      testId="confirm-dialog" storageKey="pingone-mcp-inspector.confirm" defaultWidth={576} defaultHeight={null} minHeight={200}>
+      testId="confirm-dialog" storageKey="mfa-admin-mcp.confirm" defaultWidth={576} defaultHeight={null} minHeight={200}>
       <p id="confirm-d">These are the exact arguments that will be sent. If any argument changes, the hash changes and the call is refused.</p>
       <pre className="untrusted untrusted--block" data-testid="confirm-args">{pretty(gate.arguments)}</pre>
       <p>Arguments hash: <code data-testid="confirm-hash">{gate.argsHash}</code></p>

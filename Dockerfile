@@ -12,7 +12,7 @@ RUN npm run build -w web
 
 FROM node:26-alpine
 WORKDIR /app
-ENV NODE_ENV=production PORT=5201 P1MCP_DATA_DIR=/data
+ENV NODE_ENV=production PORT=7810 MFAADM_DATA_DIR=/data
 COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY web/package.json web/
@@ -24,11 +24,11 @@ COPY --from=web /app/web/dist web/dist
 # The data dir holds the saved connections (mode 600 file, including worker secrets) and the audit log: mode 700, owned by the non-root user.
 RUN mkdir -p /data && chown node:node /data && chmod 700 /data
 USER node
-EXPOSE 5201
+EXPOSE 7810
 VOLUME /data
-# Inside the container the server must listen on all interfaces, so P1MCP_BIND is set here on purpose.
+# Inside the container the server must listen on all interfaces, so MFAADM_BIND is set here on purpose.
 # The compose file publishes the port on 127.0.0.1 only; do not publish it more widely: Live can act on a PingOne tenant.
-ENV P1MCP_BIND=0.0.0.0
-# P1MCP_CONTAINER=1 tells the Live loopback-bind guard that this wide bind is the container's (published on 127.0.0.1 only). A host run does not get it.
-ENV P1MCP_CONTAINER=1
+ENV MFAADM_BIND=0.0.0.0
+# MFAADM_CONTAINER=1 tells the Live loopback-bind guard that this wide bind is the container's (published on 127.0.0.1 only). A host run does not get it.
+ENV MFAADM_CONTAINER=1
 CMD ["node", "server/src/index.js"]

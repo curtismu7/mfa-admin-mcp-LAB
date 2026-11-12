@@ -3,7 +3,7 @@
 A standalone app that connects to PingOne's hosted MCP server (the admin plane) or any HTTP MCP server, lists its tools with a safety class, and calls them. Read-only by default. Mock by default; Live is owner-run.
 
 Tier: Tester
-Repo: https://github.com/curtismu7/pingone-mcp-inspector-LAB
+Repo: https://github.com/curtismu7/mfa-admin-mcp-LAB
 Catalog: D3
 
 > **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is refused** until the owner opts in, and the banner on every tab, presenter mode included, names the mode. The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
@@ -21,19 +21,19 @@ Product source: earlier PingOne MCP work and the `pingone-mcp` skill. Only ideas
 Prerequisites: Node 26 or newer (`.nvmrc` says 26). Docker only for the Docker form.
 
 ```bash
-git clone https://github.com/curtismu7/pingone-mcp-inspector-LAB.git
-cd pingone-mcp-inspector-LAB
+git clone https://github.com/curtismu7/mfa-admin-mcp-LAB.git
+cd mfa-admin-mcp-LAB
 npm ci
 npm run doctor      # node, mode, bind, data directory, port range, netguard self-test, free port
 npm run build       # builds web/dist, which the server serves itself
-npm start           # then open http://127.0.0.1:5201/
+npm start           # then open http://127.0.0.1:7810/
 ```
 
 Mock mode needs no setup at all: no settings file, no account, no network. Open the page, press **Add mock demo (worker, viewer/admin switch)** on Connections, and try Tools, Raw JSON-RPC, Audit, Stories and Diagram. With no connection saved yet, `GET /api/health` answers `needs-setup` (the app works; it just has nothing to show).
 
 ```bash
-curl -s http://127.0.0.1:5201/api/health
-curl -s http://127.0.0.1:5201/api/info
+curl -s http://127.0.0.1:7810/api/health
+curl -s http://127.0.0.1:7810/api/info
 npm run smoke       # the mock demo end to end against the running app, then removes what it made
 ```
 
@@ -49,29 +49,29 @@ All standalone apps read one settings file, `~/Development/.env` (mode 600). `ST
 | `PINGONE_ENVIRONMENT_ID` | optional | Default environment id for the "Add PingOne worker" preset (Live only). Not a secret. |
 | `PINGONE_REGION` | optional | Default region (`com`, `eu`, `asia`, `ca`) for the same preset. |
 
-No admin or worker credential belongs in this file, and none is read from it. The saved connections (including a worker client secret, which is write-only) live in the app's own owner-only folder (`.data`, or `P1MCP_DATA_DIR`; mode 700, files mode 600). The "Add PingOne worker" preset reads the worker's client id and secret from a separate local file outside the repo (`~/.config/pingone-mcp-inspector/worker.env`, or `P1MCP_WORKER_ENV_FILE`; see `.env.example`). `.env.example` lists every environment variable; the old repo-level `.env` loader is gone. The port is not in the settings file: apps keep their port defaults in code.
+No admin or worker credential belongs in this file, and none is read from it. The saved connections (including a worker client secret, which is write-only) live in the app's own owner-only folder (`.data`, or `MFAADM_DATA_DIR`; mode 700, files mode 600). The "Add PingOne worker" preset reads the worker's client id and secret from a separate local file outside the repo (`~/.config/mfa-admin-mcp/worker.env`, or `MFAADM_WORKER_ENV_FILE`; see `.env.example`). `.env.example` lists every environment variable; the old repo-level `.env` loader is gone. The port is not in the settings file: apps keep their port defaults in code.
 
 ## Ports, and what to do if the port is taken
 
-Ports: pingone-mcp-inspector listens on 5201 (set with PORT, default 5201).
-Port range for this app: 5201-5249.
+Ports: mfa-admin-mcp listens on 7810 (set with PORT, default 7810).
+Port range for this app: 7810-5249.
 
 If the port is taken:
 1. Find what is using it:
-   lsof -iTCP:5201 -sTCP:LISTEN -n -P
+   lsof -iTCP:7810 -sTCP:LISTEN -n -P
 2. If it is an old copy of this app, stop that process: kill <PID>.
 3. If it is something else, stop it, or start this app on another port:
    PORT=<other port> npm start
 4. Do not use 8080, 5173, 3000, 4000, 4400, 4510, 4600-4601, 18080, 19080 or 19090.
    Those are taken by other demos or other tools.
 
-Other ports this app uses, all inside 5201-5249: the Vite dev server on 5202 (`VITE_PORT`), `npm run e2e` on 5231 (`E2E_PORT`), and the Docker host port `HOST_PORT` (default 5201). The in-process mock listens on an ephemeral loopback port, and the tests use ephemeral ports. The port board lists the block 5200-5249 for another app (p1-third-party-exchange, which defaults to 5200); this app keeps the 5201 it already used. That overlap is for the owner to settle (UNVERIFIED).
+Other ports this app uses, all inside 7810-5249: the Vite dev server on 5202 (`VITE_PORT`), `npm run e2e` on 5231 (`E2E_PORT`), and the Docker host port `HOST_PORT` (default 7810). The in-process mock listens on an ephemeral loopback port, and the tests use ephemeral ports. The port board lists the block 5200-5249 for another app (p1-third-party-exchange, which defaults to 5200); this app keeps the 7810 it already used. That overlap is for the owner to settle (UNVERIFIED).
 
 ## Mock and live modes
 
 - The header has a **Mock / Live** toggle on every page (Connections, Tools, Raw JSON-RPC, Audit, MCP first, Stories, Diagram). It shows the mode as `Mode: mock` or `Mode: live`, and the banner above it says the same ("MOCK mode, simulated." or "LIVE mode, owner-run."). Nothing about the mode is remembered: every load, reload and new tab opens in Mock, and Live is entered by pressing the toggle (when the server allows it).
 - **Mock** shows the mock demo connections. Everything in this README runs in Mock.
-- **Live** shows the saved real-server connections, the one-click presets and the "Add a connection" form. Pressing Live when it is refused changes nothing and sends no request: the page shows which guard failed and stays in Mock. Live is allowed only when every guard passes: the owner opted in with `PINGONE_MCP_INSPECTOR_MODE=live` (in the settings file or the environment), and the server is bound to loopback. A non-loopback bind (`P1MCP_BIND`) passes the guard only inside the container image, which also sets `P1MCP_CONTAINER=1` (it is published on `127.0.0.1` only); on a host run, `P1MCP_BIND=0.0.0.0` with Live is refused as `loopback-bind`. `GET /api/info` lists the failing guards.
+- **Live** shows the saved real-server connections, the one-click presets and the "Add a connection" form. Pressing Live when it is refused changes nothing and sends no request: the page shows which guard failed and stays in Mock. Live is allowed only when every guard passes: the owner opted in with `PINGONE_MCP_INSPECTOR_MODE=live` (in the settings file or the environment), and the server is bound to loopback. A non-loopback bind (`MFAADM_BIND`) passes the guard only inside the container image, which also sets `MFAADM_CONTAINER=1` (it is published on `127.0.0.1` only); on a host run, `MFAADM_BIND=0.0.0.0` with Live is refused as `loopback-bind`. `GET /api/info` lists the failing guards.
 - A saved Live connection is refused with 403 `live_refused` on every network route while Live is refused, even if it is already in the file. Deleting it, locking its writes and signing out stay available.
 - Live connection rules: the server URL must be https (http only on loopback), carry no credentials and not be a literal private, link-local, shared (100.64.0.0/10) or benchmark (198.18.0.0/15) address, including the same IPv4 address written as an IPv6 literal (`[::ffff:10.0.0.1]`, NAT64 `[64:ff9b::a00:1]`, 6to4); a PingOne region must be `com`, `eu`, `asia` or `ca` unless you opt in to another suffix. Redirects are not followed and replies are size and time capped. Writes are off for every new connection; a write needs the confirm gate (exact arguments and their hash), and a destructive call needs the tool name typed.
 - **Presenter mode** (press `P`, or the Present button; `Esc` leaves it). It enlarges the text and shows a presenter bar. The toggle, the mode chip and the banner stay.
@@ -91,12 +91,12 @@ npm run smoke    # health, info, the mock demo end to end, Reset, against the ru
 ## Docker (optional)
 
 ```bash
-HOST_PORT=5201 docker compose up --build -d    # OrbStack, never Docker Desktop
-curl -s http://127.0.0.1:5201/api/health
+HOST_PORT=7810 docker compose up --build -d    # OrbStack, never Docker Desktop
+curl -s http://127.0.0.1:7810/api/health
 docker compose down
 ```
 
-The container publishes on `127.0.0.1` only (a test pins it), runs as the non-root `node` user with a read-only root filesystem, all capabilities dropped and a `/data` volume for the saved connections. The server binds `0.0.0.0` inside it only because `P1MCP_BIND` is set in the image, and `P1MCP_CONTAINER=1` (also set by the image) is what lets Live accept that bind. Live is off in the container unless you start it with `PINGONE_MCP_INSPECTOR_MODE=live` in your shell. For the interactive sign-in (Live), register `http://localhost:<HOST_PORT>/api/oauth/callback` on your OAuth application: the app refuses a redirect URI whose port differs from the port the page is served on. Check a running instance by content with `npm run verify-running -- http://localhost:5201 [--container <name>]` (mock stub only).
+The container publishes on `127.0.0.1` only (a test pins it), runs as the non-root `node` user with a read-only root filesystem, all capabilities dropped and a `/data` volume for the saved connections. The server binds `0.0.0.0` inside it only because `MFAADM_BIND` is set in the image, and `MFAADM_CONTAINER=1` (also set by the image) is what lets Live accept that bind. Live is off in the container unless you start it with `PINGONE_MCP_INSPECTOR_MODE=live` in your shell. For the interactive sign-in (Live), register `http://localhost:<HOST_PORT>/api/oauth/callback` on your OAuth application: the app refuses a redirect URI whose port differs from the port the page is served on. Check a running instance by content with `npm run verify-running -- http://localhost:7810 [--container <name>]` (mock stub only).
 
 ## Tests
 
@@ -108,7 +108,7 @@ On Node 26, with the counts from the last run in this repo: 79 server tests (nod
 
 ## Troubleshooting
 
-- **The port is taken, or "refusing to start: port-range".** See "Ports, and what to do if the port is taken". `PORT` must be inside 5201-5249.
+- **The port is taken, or "refusing to start: port-range".** See "Ports, and what to do if the port is taken". `PORT` must be inside 7810-5249.
 - **`GET /` answers a JSON 404.** The UI is not built. Run `npm run build`, then restart.
 - **Pressing Live does nothing but show a message.** That is the designed behaviour: Live is refused until `PINGONE_MCP_INSPECTOR_MODE=live` is set in `~/Development/.env` (or the environment), then restart the server.
 - **A Live connection answers 403 `live_refused`.** Same cause. It was saved while Live was allowed; set the key again, or delete the connection.
@@ -131,7 +131,7 @@ On Node 26, with the counts from the last run in this repo: 79 server tests (nod
 - Diagram: a ReactFlow diagram (movable boxes, Simulate, Reset, speed) of the path from your browser through this app, the token endpoint and the hosted MCP server to the admin API, for the worker and the interactive sign-in. The two diagrams are diagram-studio/1 data in `server/diagrams/` (`worker.json`, `interactive.json`). The server checks both with a copy of the studio's validator when it starts (an invalid file stops it, and `npm run doctor` says so), serves the list at `GET /api/diagrams` and each file at `GET /api/diagrams/:name` (a fixed name list; any other name is a JSON 404 that does not echo it), and the page fetches the diagram by name. The Docker image copies `server/diagrams`.
 - Stories: two talk tracks (S01 a short tool list, S02 a write needs a second look) with three vertical packs, shown on the Tools, Tool and Stories pages. The presenter script is [docs/talk-track.md](docs/talk-track.md), generated from them.
 
-Safety notes: loopback bind (refused otherwise unless `P1MCP_BIND` is set), Host check, same-origin writes. A tenant's own tool results are shown as data; only this tool's own secrets are scrubbed from them. A `readOnlyHint:true` annotation is not honoured when the tool name starts with or contains a write or destructive verb, nor when the name has no recognised verb at all (unknown stays write). The deliberate 4xx answers are `live_refused` (403), `writes_disabled` (403), `method_not_allowed` (403), `confirm_required` and `args_hash_mismatch` (409), `typed_name_required` (409) and `login_required` (401). Unverified against a real tenant, by design of this build: the exact scopes and consent behaviour of the interactive login, the tool count for a fully privileged worker (the skill says about 60 to 70), which MCP endpoint shape a tenant answers on, whether the hosted server accepts a worker (client_credentials) token at all (sources disagree; see docs/live-checks.md item 2), and PingOne's redirect-URI rules for `http://localhost`.
+Safety notes: loopback bind (refused otherwise unless `MFAADM_BIND` is set), Host check, same-origin writes. A tenant's own tool results are shown as data; only this tool's own secrets are scrubbed from them. A `readOnlyHint:true` annotation is not honoured when the tool name starts with or contains a write or destructive verb, nor when the name has no recognised verb at all (unknown stays write). The deliberate 4xx answers are `live_refused` (403), `writes_disabled` (403), `method_not_allowed` (403), `confirm_required` and `args_hash_mismatch` (409), `typed_name_required` (409) and `login_required` (401). Unverified against a real tenant, by design of this build: the exact scopes and consent behaviour of the interactive login, the tool count for a fully privileged worker (the skill says about 60 to 70), which MCP endpoint shape a tenant answers on, whether the hosted server accepts a worker (client_credentials) token at all (sources disagree; see docs/live-checks.md item 2), and PingOne's redirect-URI rules for `http://localhost`.
 
 ## Known gaps and not done
 
@@ -150,7 +150,7 @@ Safety notes: loopback bind (refused otherwise unless `P1MCP_BIND` is set), Host
 
 ## Packaging files
 
-`content-pack.json` is the Learning Hub pack (`demo-content-pack/1`), generated by `npm run content-pack` (it also validates; do not hand-edit it). `docs/shelf-entry.json` is the Demo Shelf registry entry (port 5201, catalog id `D3`, a relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's validation rules, tested against the entry.
+`content-pack.json` is the Learning Hub pack (`demo-content-pack/1`), generated by `npm run content-pack` (it also validates; do not hand-edit it). `docs/shelf-entry.json` is the Demo Shelf registry entry (port 7810, catalog id `D3`, a relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's validation rules, tested against the entry.
 
 ## Layout
 
@@ -161,5 +161,5 @@ web/            React + Vite UI (vitest + testing-library tests); styles/standal
 scripts/        doctor, reset, smoke, e2e, verify-running, content-pack and talk-track builders, compose/docs/repo/shelf/hooks tests
 docs/           architecture, security, classification, live-checks, references, talk-track, schema, shelf entry
 content/        terms.json, the source of the pack's glossary
-Dockerfile, docker-compose.yml   loopback-only publish (OrbStack: HOST_PORT=5201 docker compose up --build -d)
+Dockerfile, docker-compose.yml   loopback-only publish (OrbStack: HOST_PORT=7810 docker compose up --build -d)
 ```

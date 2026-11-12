@@ -16,13 +16,13 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); window.history.replaceState(n
 describe("return link", () => {
   it("?from=ai-demo-standalone: strip named for AI Demo Standalone, Back to its fixed proxy path", () => {
     fakeApi();
-    window.history.replaceState(null, "", "/pingone-mcp-inspector/?from=ai-demo-standalone&uc=UC12");
+    window.history.replaceState(null, "", "/mfa-admin-mcp/?from=ai-demo-standalone&uc=UC12");
     render(<App />);
     const note = screen.getByRole("note", { name: "Opened from AI Demo Standalone" });
     expect(note.textContent).toContain("UC12");
     const buttons = screen.getAllByRole("button", { name: /Back to AI Demo Standalone/ });
     expect(buttons).toHaveLength(2);
-    expect(returnLinkFor("pingone-mcp-inspector").href).toBe("/ai-demo-standalone/?returned=pingone-mcp-inspector&uc=UC12");
+    expect(returnLinkFor("mfa-admin-mcp").href).toBe("/ai-demo-standalone/?returned=mfa-admin-mcp&uc=UC12");
   });
 
   it("the vendored files match return-link.sha256, which names the parent commit", () => {
@@ -58,9 +58,9 @@ describe("return link", () => {
   });
 
   it("Back goes to the proxy path behind the lab proxy, to the direct URL on the app's own port", () => {
-    window.history.replaceState(null, "", "/pingone-mcp-inspector/?from=customer-agent&uc=UC-LEARN2");
-    expect(returnLinkFor("pingone-mcp-inspector").href).toBe("/customer-agent/?returned=pingone-mcp-inspector&uc=UC-LEARN2");
+    window.history.replaceState(null, "", "/mfa-admin-mcp/?from=customer-agent&uc=UC-LEARN2");
+    expect(returnLinkFor("mfa-admin-mcp").href).toBe("/customer-agent/?returned=mfa-admin-mcp&uc=UC-LEARN2");
     window.history.replaceState(null, "", "/?from=customer-agent&uc=UC-LEARN2");
-    expect(returnLinkFor("pingone-mcp-inspector").href).toBe("http://127.0.0.1:5603/?returned=pingone-mcp-inspector&uc=UC-LEARN2");
+    expect(returnLinkFor("mfa-admin-mcp").href).toBe("http://127.0.0.1:5603/?returned=mfa-admin-mcp&uc=UC-LEARN2");
   });
 });

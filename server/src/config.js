@@ -1,6 +1,6 @@
 // Mode and port configuration.
 //
-// PINGONE_MCP_INSPECTOR_MODE is the owner's opt-in for Live. mock (the default) keeps Live refused; live lets the header toggle go to
+// MFA_ADMIN_MCP_MODE is the owner's opt-in for Live. mock (the default) keeps Live refused; live lets the header toggle go to
 // Live. The page always opens in Mock; Live is entered by pressing the header toggle each time (nothing is remembered). A bare MODE is NOT read: the
 // shared settings file is read by every standalone app, and another app's MODE must not switch this one. Anything that is not mock
 // or live is an error, never a silent fallback.
@@ -9,16 +9,16 @@ import { fileURLToPath } from 'node:url';
 import { bindHost, isLoopbackHost } from './security.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const DEFAULT_PORT = 5201;
-export const PORT_MIN = 5201;
+export const DEFAULT_PORT = 7810;
+export const PORT_MIN = 7810;
 export const PORT_MAX = 5249;
 export const port = (env = process.env) => Number(env.PORT) || DEFAULT_PORT;
 export const portInRange = (p) => Number.isInteger(p) && p >= PORT_MIN && p <= PORT_MAX;
-export const dataDir = (env = process.env) => path.resolve(root, env.P1MCP_DATA_DIR || '.data');
+export const dataDir = (env = process.env) => path.resolve(root, env.MFAADM_DATA_DIR || '.data');
 export const webDist = path.join(root, 'web', 'dist');
 
 export const MODES = Object.freeze(['mock', 'live']);
-export const MODE_KEY = 'PINGONE_MCP_INSPECTOR_MODE';
+export const MODE_KEY = 'MFA_ADMIN_MCP_MODE';
 
 export function modeFrom(env = process.env) {
   const raw = env[MODE_KEY];
@@ -33,7 +33,7 @@ export function liveGuards(env = process.env) {
   const host = bindHost(env);
   return [
     { id: 'owner-opt-in', ok: env[MODE_KEY] === 'live', detail: `${MODE_KEY}=live is set in the shared settings file (~/Development/.env, or the path in STANDALONE_ENV) or the environment` },
-    { id: 'loopback-bind', ok: isLoopbackHost(host) || (Boolean(env.P1MCP_BIND) && env.P1MCP_CONTAINER === '1'), detail: 'the server is bound to loopback; a non-loopback bind (P1MCP_BIND) is accepted for Live only inside the container image, which sets P1MCP_CONTAINER=1 and is published on 127.0.0.1 only' },
+    { id: 'loopback-bind', ok: isLoopbackHost(host) || (Boolean(env.MFAADM_BIND) && env.MFAADM_CONTAINER === '1'), detail: 'the server is bound to loopback; a non-loopback bind (MFAADM_BIND) is accepted for Live only inside the container image, which sets MFAADM_CONTAINER=1 and is published on 127.0.0.1 only' },
   ];
 }
 // null when Live may run; otherwise which guards failed and what each needs.

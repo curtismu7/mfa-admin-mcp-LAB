@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Dev: the API runs on PORT (default 5201); Vite on VITE_PORT (default 5202); /api is proxied.
-const api = { target: `http://127.0.0.1:${Number(process.env.PORT) || 5201}` };
+// Dev: the API runs on PORT (default 7810); Vite on VITE_PORT (default 5202); /api is proxied.
+const api = { target: `http://127.0.0.1:${Number(process.env.PORT) || 7810}` };
 export default defineConfig({
   plugins: [react()],
   test: { environment: "jsdom", globals: true, setupFiles: "./src/testSetup.js" },

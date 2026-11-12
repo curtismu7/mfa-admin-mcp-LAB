@@ -1,5 +1,5 @@
 {
-  "name": "@pingone-mcp-inspector-lab/web",
+  "name": "@mfa-admin-mcp-lab/web",
   "private": true,
   "type": "module",
   "scripts": {

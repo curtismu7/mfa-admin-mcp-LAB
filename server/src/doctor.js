@@ -25,7 +25,7 @@ export function runChecks({ env = process.env } = {}) {
   catch { add('data-dir', 'fail', 'data directory is not writable'); }
 
   const host = bindHost(env);
-  add('bind', isLoopbackHost(host) || env.P1MCP_BIND ? 'pass' : 'fail', isLoopbackHost(host) ? 'loopback only' : env.P1MCP_BIND ? 'non-loopback bind opted in via P1MCP_BIND' : 'bind address is not loopback');
+  add('bind', isLoopbackHost(host) || env.MFAADM_BIND ? 'pass' : 'fail', isLoopbackHost(host) ? 'loopback only' : env.MFAADM_BIND ? 'non-loopback bind opted in via MFAADM_BIND' : 'bind address is not loopback');
 
   try {
     const n = labAllowedHosts(env).size;

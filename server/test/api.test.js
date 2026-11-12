@@ -29,7 +29,7 @@ test('connections: region is an allowlist (opt-in for others) and a non-loopback
   assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'eu' }))).status, 201);
   const inter = (redirectUri) => ({ ...workerConn(), auth: 'interactive', redirectUri });
   assert.equal((await s.call('POST', '/api/connections', inter('http://evil.com/api/oauth/callback'))).status, 400);
-  assert.equal((await s.call('POST', '/api/connections', inter('http://localhost:5201/api/oauth/callback'))).status, 201);
+  assert.equal((await s.call('POST', '/api/connections', inter('http://localhost:7810/api/oauth/callback'))).status, 201);
 });
 test('connections: validation, secrets write-only, file mode 600 in a 700 dir', async () => {
   assert.equal((await s.call('POST', '/api/connections', { kind: 'pingone', envId: 'nope', clientId: 'x', clientSecret: 'y' })).status, 400);
@@ -178,7 +178,7 @@ test('guards: bad Host refused, cross-origin and missing-origin writes refused, 
   assert.equal((await s.call('POST', '/api/connections', workerConn(), { origin: 'http://evil.example' })).status, 403);
   assert.equal((await s.call('POST', '/api/connections', workerConn(), { origin: null })).status, 403);
   assert.throws(() => assertBindAllowed('0.0.0.0', {}), /refusing to bind/);
-  assert.equal(assertBindAllowed('0.0.0.0', { P1MCP_BIND: '0.0.0.0' }), '0.0.0.0');
+  assert.equal(assertBindAllowed('0.0.0.0', { MFAADM_BIND: '0.0.0.0' }), '0.0.0.0');
 });
 
 test('mock role switch changes the tool list and the auth status carries an expiry but no token', async () => {
@@ -207,7 +207,7 @@ test('GET /api/health turns needs-setup into ready as soon as a connection exist
 
 test('presets: banking/opensearch create custom connections; pingone preset needs a local file and never echoes the secret', async () => {
   const dir = tmpDir(); const file = path.join(dir, 'worker.env');
-  const t = await startApp({ env: { P1MCP_WORKER_ENV_FILE: file, P1MCP_BANKING_URL: 'http://127.0.0.1:1/mcp' } });
+  const t = await startApp({ env: { MFAADM_WORKER_ENV_FILE: file, MFAADM_BANKING_URL: 'http://127.0.0.1:1/mcp' } });
   try {
     const b = await t.call('POST', '/api/presets/banking');
     assert.equal(b.status, 201); assert.equal(b.json.kind, 'custom'); assert.match(b.json.url, /127\.0\.0\.1:1\/mcp/);

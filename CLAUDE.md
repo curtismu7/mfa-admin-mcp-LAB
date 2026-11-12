@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-PingOne MCP Inspector LAB (Tier: Tester, catalog D3, port 5201, range 5201-5249). Connects to PingOne's hosted MCP server or any HTTP MCP server, lists tools with a safety class (read / write / destructive), calls them behind a confirm gate, scans the tool metadata, keeps a redacted audit log. Mock (the in-process mock demo) is the default; Live is owner-run and refused until opted in. Details: [README.md](README.md), [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md). Presenter script: [docs/talk-track.md](docs/talk-track.md).
+PingOne MCP Inspector LAB (Tier: Tester, catalog D3, port 7810, range 7810-5249). Connects to PingOne's hosted MCP server or any HTTP MCP server, lists tools with a safety class (read / write / destructive), calls them behind a confirm gate, scans the tool metadata, keeps a redacted audit log. Mock (the in-process mock demo) is the default; Live is owner-run and refused until opted in. Details: [README.md](README.md), [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md). Presenter script: [docs/talk-track.md](docs/talk-track.md).
 
 ## Commands (from package.json)
 
@@ -8,7 +8,7 @@ PingOne MCP Inspector LAB (Tier: Tester, catalog D3, port 5201, range 5201-5249)
 npm ci
 npm test             # server (node --test test/*.test.js) + web (vitest) + scripts/*.test.mjs
 npm run build        # builds web/dist, served by the server itself
-npm start            # http://127.0.0.1:5201/  (PORT to change)
+npm start            # http://127.0.0.1:7810/  (PORT to change)
 npm run dev          # API with --watch, Vite on 5202
 npm run doctor       # node 26, mode, data dir, bind, port range, netguard self-test, free port (PORT=5230 to dodge a running copy)
 npm run reset        # POST /api/reset on the running app
@@ -18,11 +18,11 @@ npm run content-pack # regenerates and validates content-pack.json (do not hand-
 npm run talk-track   # regenerates docs/talk-track.md from the stories (a test fails on drift)
 ```
 
-Docker (OrbStack, never Docker Desktop): `HOST_PORT=5201 docker compose up --build -d` (publishes `127.0.0.1:` only). Node 26 only.
+Docker (OrbStack, never Docker Desktop): `HOST_PORT=7810 docker compose up --build -d` (publishes `127.0.0.1:` only). Node 26 only.
 
 ## Rules that bite here
 
-- **Mock / Live toggle in the header on every page**, the mode shown (`Mode: mock|live`) and the banner saying the same mode, presenter mode included. The page always opens in Mock (nothing about the mode is remembered). **Live is refused** unless `PINGONE_MCP_INSPECTOR_MODE=live` (shared settings file or environment) and the bind is loopback (a non-loopback `P1MCP_BIND` counts only with the image's `P1MCP_CONTAINER=1`): `server/src/config.js` guards, `GET /api/info`, 403 `live_refused` in `app.js` on every network route for a non-mock connection. Do not add a path that makes Live work without the owner. Never read a bare `MODE`, never `process.env.MODE`.
+- **Mock / Live toggle in the header on every page**, the mode shown (`Mode: mock|live`) and the banner saying the same mode, presenter mode included. The page always opens in Mock (nothing about the mode is remembered). **Live is refused** unless `PINGONE_MCP_INSPECTOR_MODE=live` (shared settings file or environment) and the bind is loopback (a non-loopback `MFAADM_BIND` counts only with the image's `MFAADM_CONTAINER=1`): `server/src/config.js` guards, `GET /api/info`, 403 `live_refused` in `app.js` on every network route for a non-mock connection. Do not add a path that makes Live work without the owner. Never read a bare `MODE`, never `process.env.MODE`.
 - **Zero outbound in Mock.** `server/src/netguard.js` (installed by `index.js`) refuses every non-loopback socket, DNS lookup, fetch, UDP send and UDP connect; a Live operation holds a permit for the hosts of its own connection only (`urls.js` `liveHosts`, `withPermits` in `app.js`). Tests run under the recorder in `server/test/netguard.js` and assert zero attempts.
 - **Secrets are write-only.** Client secrets, tokens and the custom header value are never returned, logged or audited (`store.js` `publicView`, `redact.js`). Reset keeps connections but turns writes off.
 - **Settings.** `~/Development/.env` (or `STANDALONE_ENV`) is READ ONLY, through `util.parseEnv`, three keys only (`settings.js`). No per-app `.env` is loaded. Admin and worker credentials never go in it.
@@ -46,5 +46,5 @@ Docker (OrbStack, never Docker Desktop): `HOST_PORT=5201 docker compose up --bui
 ## Shelf and content pack
 
 - Edit `content/terms.json`, then `npm run content-pack`. Catalog id D3 appears in the shelf entry, the pack and the README; a test pins all three.
-- The shelf entry is `docs/shelf-entry.json` (port 5201, relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's rules. Change the port or id only with the shelf owner.
+- The shelf entry is `docs/shelf-entry.json` (port 7810, relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's rules. Change the port or id only with the shelf owner.
 - Run check-drift, check-css and conformance by hand: `bash ~/Development/AI-DEMO-Standalone/scripts/check-drift.sh .`, `node ~/Development/demo-kit-base-rule18-warn/scripts/conformance.mjs . --new`.

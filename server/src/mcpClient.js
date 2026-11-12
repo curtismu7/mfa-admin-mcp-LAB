@@ -83,7 +83,7 @@ export function createMcpClient({ url, getAuth, refreshAuth, timeoutMs = 20_000,
   }
   async function ensureSession() {
     if (!handshake || session) return;
-    const init = await post({ jsonrpc: '2.0', id: ++msgId, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'pingone-mcp-inspector', version: '0.2.0' } } }, false);
+    const init = await post({ jsonrpc: '2.0', id: ++msgId, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'mfa-admin-mcp', version: '0.2.0' } } }, false);
     if (init?.error) { session = null; throw rpcError(init.error.message || 'MCP initialize failed', 'mcp_rpc_error', { mcpCode: init.error.code }); }
     await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, false).catch(() => {});
   }

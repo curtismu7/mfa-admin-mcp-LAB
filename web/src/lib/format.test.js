@@ -34,5 +34,5 @@ test("display redaction masks secret-looking argument names, deeply", () => {
 test("countdown and redirect URI", () => {
   expect(countdown(1000 + 125_000, 1000)).toBe("2m 05s");
   expect(countdown(1000, 5000)).toBe("expired");
-  expect(redirectUriFor({ port: "5201" })).toBe("http://localhost:5201/api/oauth/callback");
+  expect(redirectUriFor({ port: "7810" })).toBe("http://localhost:7810/api/oauth/callback");
 });

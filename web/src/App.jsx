@@ -142,7 +142,7 @@ function Shell() {
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
       <header className="top">
         <Banner mode={mode} conn={active} />
-        <ReturnLink app="pingone-mcp-inspector" />
+        <ReturnLink app="mfa-admin-mcp" />
         <div className="top__bar">
           <h1 className="top__title">PingOne MCP Inspector LAB</h1>
           <div className="top__tools">
@@ -152,11 +152,11 @@ function Shell() {
               fontSize={{ value: fontStep, onChange: setFontStep }}
               present={{ active: present, onToggle: () => setPresent(!present) }}
               shelfUrl="https://local.ping-devops.com:8443/"
-              help={{ href: "https://github.com/curtismu7/pingone-mcp-inspector-LAB#readme" }}
+              help={{ href: "https://github.com/curtismu7/mfa-admin-mcp-LAB#readme" }}
               version={VERSION}
               onReset={reset}
             >
-              <ReturnLink app="pingone-mcp-inspector" variant="header" />
+              <ReturnLink app="mfa-admin-mcp" variant="header" />
               <ShelfLink />
               <span className="chip" data-testid="mode">Mode: {mode}</span>
             </TopMenu>

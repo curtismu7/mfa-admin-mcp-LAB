@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
 
-export const SETTINGS_KEYS = ['PINGONE_MCP_INSPECTOR_MODE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION'];
+export const SETTINGS_KEYS = ['MFA_ADMIN_MCP_MODE', 'PINGONE_ENVIRONMENT_ID', 'PINGONE_REGION'];
 export const settingsPath = (env = process.env) => env.STANDALONE_ENV || path.join(os.homedir(), 'Development', '.env');
 
 export function readSharedSettings(file) {

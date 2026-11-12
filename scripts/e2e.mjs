@@ -31,9 +31,9 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pingone-mcp-lab-e2e-'));
 // STANDALONE_ENV points at a file that does not exist, so the run never reads the real shared settings file. Live is opted in for the
 // first server only (the hostile-stub scan needs a saved Live connection to a loopback stub); the second server has no opt-in.
 const missingEnv = path.join(dataDir, 'no-such.env');
-const start = (p, extra, sub) => spawn(process.execPath, ['--import', './scripts/e2e-guard.mjs', 'server/src/index.js'], { cwd: root, env: { ...process.env, STANDALONE_ENV: missingEnv, PORT: String(p), P1MCP_DATA_DIR: path.join(dataDir, sub), E2E_GUARD_FILE: path.join(dataDir, `guard-${sub}.json`), ...extra }, stdio: 'ignore' });
-delete process.env.PINGONE_MCP_INSPECTOR_MODE;
-const server = start(port, { PINGONE_MCP_INSPECTOR_MODE: 'live' }, 'data');
+const start = (p, extra, sub) => spawn(process.execPath, ['--import', './scripts/e2e-guard.mjs', 'server/src/index.js'], { cwd: root, env: { ...process.env, STANDALONE_ENV: missingEnv, PORT: String(p), MFAADM_DATA_DIR: path.join(dataDir, sub), E2E_GUARD_FILE: path.join(dataDir, `guard-${sub}.json`), ...extra }, stdio: 'ignore' });
+delete process.env.MFA_ADMIN_MCP_MODE;
+const server = start(port, { MFA_ADMIN_MCP_MODE: 'live' }, 'data');
 const refusedPort = port + 1;
 const refusedServer = start(refusedPort, {}, 'data-refused');
 for (const p of [port, refusedPort]) for (let i = 0; i < 40; i++) { try { if ((await fetch(`http://localhost:${p}/api/health`)).ok) break; } catch { /* not up yet */ } await sleep(250); }

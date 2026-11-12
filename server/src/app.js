@@ -132,12 +132,12 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     try { const c = store.create(req.body || {}); health.refresh(); res.status(201).json(view(c)); }
     catch (err) { res.status(400).json({ error: 'bad_request', message: scrub(err.message, [req.body?.clientSecret, req.body?.token]) }); }
   });
-  // One-click presets. 'pingone' reads the worker from a LOCAL file outside the repo (P1MCP_WORKER_ENV_FILE), never from the repo.
+  // One-click presets. 'pingone' reads the worker from a LOCAL file outside the repo (MFAADM_WORKER_ENV_FILE), never from the repo.
   const PRESETS = {
-    banking: () => ({ kind: 'custom', label: 'Banking MCP (local)', url: env.P1MCP_BANKING_URL || 'http://localhost:9901/mcp' }),
-    opensearch: () => ({ kind: 'custom', label: 'OpenSearch MCP (local)', url: env.P1MCP_OPENSEARCH_URL || 'http://localhost:9900/mcp' }),
+    banking: () => ({ kind: 'custom', label: 'Banking MCP (local)', url: env.MFAADM_BANKING_URL || 'http://localhost:9901/mcp' }),
+    opensearch: () => ({ kind: 'custom', label: 'OpenSearch MCP (local)', url: env.MFAADM_OPENSEARCH_URL || 'http://localhost:9900/mcp' }),
     pingone: () => {
-      const file = env.P1MCP_WORKER_ENV_FILE || path.join(os.homedir(), '.config', 'pingone-mcp-inspector', 'worker.env');
+      const file = env.MFAADM_WORKER_ENV_FILE || path.join(os.homedir(), '.config', 'mfa-admin-mcp', 'worker.env');
       let txt; try { txt = fs.readFileSync(file, 'utf8'); } catch { const e = new Error(`Create ${file} with PINGONE_ENV_ID, PINGONE_REGION, PINGONE_CLIENT_ID and PINGONE_CLIENT_SECRET (see .env.example), then try again.`); e.needsSetup = true; throw e; }
       const v = Object.fromEntries(txt.split('\n').filter((l) => l.trim() && !l.startsWith('#')).map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }));
       // The environment id and region may come from the shared settings file (PINGONE_ENVIRONMENT_ID, PINGONE_REGION); the worker's client id and secret never do.

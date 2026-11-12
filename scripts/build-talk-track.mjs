@@ -18,7 +18,7 @@ export function buildTalkTrack() {
   const stories = fs.readdirSync(path.join(ROOT, 'web/src/data/stories')).filter((f) => f.endsWith('.json')).sort()
     .map((f) => fillAll(readJson(`web/src/data/stories/${f}`), vertical));
   const lines = [
-    '# PingOne MCP Inspector LAB: talk track',
+    '# MFA Admin MCP LAB: talk track',
     '',
     'Generated from `web/src/data/stories/*.json` (generic vertical) by `npm run talk-track`. Do not edit by hand.',
     '',

@@ -1,5 +1,5 @@
 {
-  "name": "@pingone-mcp-inspector-lab/server",
+  "name": "@mfa-admin-mcp-lab/server",
   "version": "0.3.0",
   "private": true,
   "type": "module",

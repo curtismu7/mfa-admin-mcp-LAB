@@ -75,7 +75,7 @@ export function installNetguard() {
     return real.connect.apply(this, args);
   };
   dns.lookup = function guardedLookup(host, ...rest) {
-    // listen() resolves its bind address through lookup. A wildcard bind (the container's P1MCP_BIND=0.0.0.0) is not outbound,
+    // listen() resolves its bind address through lookup. A wildcard bind (the container's MFAADM_BIND=0.0.0.0) is not outbound,
     // and connecting to it is still refused by the socket guard above, so only the lookup is allowed.
     if (!allowedHost(host) && host !== '0.0.0.0' && host !== '::') {
       attempts.push(`dns:${host}`);
