@@ -226,7 +226,7 @@ try {
   await page.getByRole('heading', { name: /MCP first, Management API second/ }).waitFor();
   check(await page.getByText(/UNVERIFIED externally/).count() >= 1, 'MCP-first card labels itself UNVERIFIED externally');
   await page.getByRole('link', { name: 'Stories' }).click();
-  await page.getByText('Why do I only see twelve tools?').waitFor();
+  await page.getByText('Why do I only see a short tool list?').waitFor();
   await page.getByLabel('Vertical').first().selectOption('banking');
   check((await page.locator('main').innerText()).includes('the bank'), 'banking pack re-skins the story');
   await shot('10-stories');
