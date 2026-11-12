@@ -159,11 +159,11 @@ test('secrets never appear in responses, console output, the audit log or errors
     for (const r of [
       await s.call('GET', '/api/connections'), await s.call('GET', `/api/connections/${c.id}/tools`), await s.call('POST', `/api/connections/${c.id}/test`),
       await s.call('GET', `/api/connections/${cu.id}/tools`), await s.call('POST', `/api/connections/${cu.id}/test`),
-      await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createApplication', arguments: { environmentId: ENV_ID, name: SEC } }),
+      await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC } }),
       await s.call('POST', `/api/connections/nope/call`, {}), await s.call('POST', `/api/connections/${c.id}/call`, { tool: 123 }),
     ]) out.push(r.text);
-    const h = (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createApplication', arguments: { environmentId: ENV_ID, name: SEC, clientSecret: 'x' } })).json;
-    const done = await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createApplication', arguments: { environmentId: ENV_ID, name: SEC }, confirm: true, argsHash: (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createApplication', arguments: { environmentId: ENV_ID, name: SEC } })).json.argsHash });
+    const h = (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC, clientSecret: 'x' } })).json;
+    const done = await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC }, confirm: true, argsHash: (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC } })).json.argsHash });
     assert.equal(done.status, 200); out.push(done.text, JSON.stringify(h));
     out.push((await s.call('GET', '/api/audit')).text, fs.readFileSync(path.join(s.dir, 'audit.jsonl'), 'utf8'), fs.readFileSync(path.join(s.dir, 'connections.json'), 'utf8').replaceAll(SEC, '').replaceAll(TOK, ''));
   } finally { process.stdout.write = origWrite; process.stderr.write = errWrite; }

@@ -1,7 +1,8 @@
 // In-process mock of the hosted PingOne MCP server AND a PingOne-like authorization server (token, authorize, jwks),
-// on loopback. Used by mock mode and by tests. The tool catalog is an ILLUSTRATIVE SAMPLE, NOT A RECORDING: names
-// and shapes follow the pingone-mcp skill's conventions (camelCase, role-gated list); no real recording was found in
-// AI-DEMO2. Write tools change only the in-memory fake tenant below.
+// on loopback. Used by mock mode and by tests. The tool catalog mirrors the MFA administration tool set PingOne
+// announced for early access (verified live in the family demo 2026-11-12: names, camelCase arguments, role-gated
+// list) plus a small general-admin sample; shapes follow the pingone-mcp conventions. It is an ILLUSTRATIVE SAMPLE,
+// NOT A RECORDING of any tenant. Write tools change only the in-memory fake tenant below.
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { pkceChallenge } from './auth.js';
@@ -12,29 +13,50 @@ const S = { type: 'string' };
 const ENV = { environmentId: S };
 
 // role: 'viewer' sees only read tools; 'admin' sees all.
-const CATALOG = [
+// MFA ADMINISTRATION — the lab's subject. Environment MFA settings, device-authentication
+// and FIDO (passkey) policies, notification policies, OATH tokens, and sender/delivery
+// settings for email, phone and WhatsApp.
+const MFA_CATALOG = [
+  { name: 'getMfaSettings', description: 'Get the environment MFA settings: pairing, authentication, phone extensions.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'updateMfaSettings', description: 'Update the environment MFA settings.', inputSchema: obj({ ...ENV, pairingKeyFormat: S }, ['environmentId']), role: 'admin' },
+  { name: 'resetMfaSettings', description: 'Reset the environment MFA settings to defaults.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'admin' },
+  { name: 'listMfaDeviceAuthenticationPolicies', description: 'List MFA device authentication policies.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getMfaDeviceAuthenticationPolicy', description: 'Get one MFA device authentication policy.', inputSchema: obj({ ...ENV, policyId: S }, ['environmentId', 'policyId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'createMfaDeviceAuthenticationPolicy', description: 'Create an MFA device authentication policy.', inputSchema: obj({ ...ENV, name: S }, ['environmentId', 'name']), role: 'admin' },
+  { name: 'updateMfaDeviceAuthenticationPolicy', description: 'Update an MFA device authentication policy.', inputSchema: obj({ ...ENV, policyId: S, name: S }, ['environmentId', 'policyId']), role: 'admin' },
+  { name: 'deleteMfaDeviceAuthenticationPolicy', description: 'Delete an MFA device authentication policy.', inputSchema: obj({ ...ENV, policyId: S }, ['environmentId', 'policyId']), annotations: { destructiveHint: true }, role: 'admin' },
+  { name: 'listFidoPolicies', description: 'List FIDO (passkey) policies.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getFidoPolicy', description: 'Get one FIDO policy.', inputSchema: obj({ ...ENV, policyId: S }, ['environmentId', 'policyId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'createFidoPolicy', description: 'Create a FIDO policy.', inputSchema: obj({ ...ENV, name: S }, ['environmentId', 'name']), role: 'admin' },
+  { name: 'updateFidoPolicy', description: 'Update a FIDO policy.', inputSchema: obj({ ...ENV, policyId: S, name: S }, ['environmentId', 'policyId']), role: 'admin' },
+  { name: 'deleteFidoPolicy', description: 'Delete a FIDO policy.', inputSchema: obj({ ...ENV, policyId: S }, ['environmentId', 'policyId']), annotations: { destructiveHint: true }, role: 'admin' },
+  { name: 'listNotificationPolicies', description: 'List notification policies with their delivery quotas.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getNotificationPolicy', description: 'Get one notification policy.', inputSchema: obj({ ...ENV, policyId: S }, ['environmentId', 'policyId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'createNotificationPolicy', description: 'Create a notification policy.', inputSchema: obj({ ...ENV, name: S }, ['environmentId', 'name']), role: 'admin' },
+  { name: 'updateNotificationPolicy', description: 'Update a notification policy.', inputSchema: obj({ ...ENV, policyId: S, name: S }, ['environmentId', 'policyId']), role: 'admin' },
+  { name: 'deleteNotificationPolicy', description: 'Delete a notification policy.', inputSchema: obj({ ...ENV, policyId: S }, ['environmentId', 'policyId']), annotations: { destructiveHint: true }, role: 'admin' },
+  { name: 'getNotificationsSettings', description: 'Get environment notification settings: from address, delivery mode, quotas.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'listOathTokens', description: 'List OATH tokens.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getOathToken', description: 'Get one OATH token by id.', inputSchema: obj({ ...ENV, tokenId: S }, ['environmentId', 'tokenId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getOathTokenBySerialNumber', description: 'Get one OATH token by serial number.', inputSchema: obj({ ...ENV, serialNumber: S }, ['environmentId', 'serialNumber']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getEmailDeliverySettings', description: 'Get email sender and delivery settings.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'listPhoneDeliverySettings', description: 'List phone (SMS/voice) delivery settings.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getPhoneDeliverySettings', description: 'Get one phone delivery settings record.', inputSchema: obj({ ...ENV, settingsId: S }, ['environmentId', 'settingsId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'getWhatsAppDeliverySettings', description: 'Get WhatsApp delivery settings.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+];
+
+// A small general-admin sample so the scan/classification story keeps its variety.
+const GENERAL_CATALOG = [
   { name: 'listApplications', description: 'List applications in the environment.', inputSchema: obj({ ...ENV }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
-  { name: 'getApplication', description: 'Get one application.', inputSchema: obj({ ...ENV, applicationId: S }, ['environmentId', 'applicationId']), annotations: { readOnlyHint: true }, role: 'viewer' },
-  { name: 'listPopulations', description: 'List populations.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'viewer' },
-  { name: 'listUsers', description: 'List users.', inputSchema: obj({ ...ENV, filter: S }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
   { name: 'getUser', description: 'Get one user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'viewer' },
-  { name: 'searchUsers', description: 'Search users by attribute.', inputSchema: obj({ ...ENV, query: S }, ['environmentId']), role: 'viewer' },
-  { name: 'listDaVinciFlows', description: 'List DaVinci flows.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'viewer' },
-  { name: 'describeEnvironment', description: 'Describe the environment configuration.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'viewer' },
-  { name: 'createApplication', description: 'Create an application.', inputSchema: obj({ ...ENV, name: S, type: S }, ['environmentId', 'name']), annotations: { readOnlyHint: false, destructiveHint: false }, role: 'admin' },
-  { name: 'updateApplication', description: 'Update an application.', inputSchema: obj({ ...ENV, applicationId: S, name: S }, ['environmentId', 'applicationId']), role: 'admin' },
+  { name: 'listUsers', description: 'List users.', inputSchema: obj({ ...ENV, filter: S }, ['environmentId']), annotations: { readOnlyHint: true }, role: 'viewer' },
   { name: 'createUser', description: 'Create a user.', inputSchema: obj({ ...ENV, username: S, email: S, populationId: S }, ['environmentId', 'username']), role: 'admin' },
-  { name: 'updateUser', description: 'Update a user.', inputSchema: obj({ ...ENV, userId: S, email: S }, ['environmentId', 'userId']), role: 'admin' },
-  { name: 'enableUser', description: 'Enable a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
-  { name: 'disableUser', description: 'Disable a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
-  { name: 'resetUserPassword', description: 'Start the reset flow for a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
-  { name: 'unlockUser', description: 'Unlock a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
-  { name: 'assignUserToGroup', description: 'Add a user to a group.', inputSchema: obj({ ...ENV, userId: S, groupId: S }, ['environmentId', 'userId', 'groupId']), role: 'admin' },
   { name: 'deleteUser', description: 'Delete a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), annotations: { destructiveHint: true }, role: 'admin' },
-  { name: 'deleteApplication', description: 'Delete an application.', inputSchema: obj({ ...ENV, applicationId: S }, ['environmentId', 'applicationId']), role: 'admin' },
   { name: 'purgeUserData', description: 'Purge user data.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
   { name: 'syncTenantWidgets', description: 'A tool with an unrecognised verb: classified write.', inputSchema: obj({ ...ENV }), role: 'admin' },
 ];
+
+const CATALOG = [...MFA_CATALOG, ...GENERAL_CATALOG];
 const stripRole = ({ role, ...t }) => t;
 
 export function createMock({ now = Date.now } = {}) {
@@ -43,7 +65,18 @@ export function createMock({ now = Date.now } = {}) {
   const refreshes = new Map(); // refresh -> { role, sub, clientId }
   const codes = new Map();     // code -> { clientId, redirectUri, challenge, nonce, role, envId }
   const clients = new Map();   // id -> { secret, role }  (unregistered ids are accepted offline)
-  const freshTenant = () => ({ users: [{ id: 'u1', username: 'sample.user', enabled: true }, { id: 'u2', username: 'other.user', enabled: true }], applications: [{ id: 'a1', name: 'Sample App' }] });
+  const freshTenant = () => ({
+    users: [{ id: 'u1', username: 'sample.user', enabled: true }, { id: 'u2', username: 'other.user', enabled: true }],
+    applications: [{ id: 'a1', name: 'Sample App' }],
+    mfaSettings: { pairing: { maxAllowedDevices: 20 }, authentication: { deviceSelection: 'DEFAULT_TO_FIRST' }, users: { mfaEnabled: true } },
+    fidoPolicies: [{ id: 'f1', name: 'Passkeys', authenticatorAttachment: 'PLATFORM', discoverableCredentials: 'REQUIRED' }],
+    deviceAuthPolicies: [{ id: 'd1', name: 'Default MFA Policy', deviceSelection: 'ALWAYS_DISPLAY_DEVICES' }],
+    notificationPolicies: [{ id: 'n1', name: 'Default Notification Policy', default: true, deliveryMethods: ['SMS', 'Voice', 'WhatsApp'] }],
+    notificationsSettings: { deliveryMode: 'ALL', from: { name: 'PingOne', address: 'noreply@example.com' } },
+    oathTokens: [],
+    emailDelivery: { protocol: 'SMTPS' },
+    phoneDelivery: [],
+  });
   const tenant = freshTenant();
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'mock-1', alg: 'RS256', use: 'sig' };
@@ -69,15 +102,40 @@ export function createMock({ now = Date.now } = {}) {
   function callTool(name, a) {
     const t = tenant;
     switch (name) {
+      // MFA administration — read
+      case 'getMfaSettings': return t.mfaSettings;
+      case 'listMfaDeviceAuthenticationPolicies': return t.deviceAuthPolicies;
+      case 'getMfaDeviceAuthenticationPolicy': return t.deviceAuthPolicies.find((x) => x.id === a.policyId) || null;
+      case 'listFidoPolicies': return t.fidoPolicies;
+      case 'getFidoPolicy': return t.fidoPolicies.find((x) => x.id === a.policyId) || null;
+      case 'listNotificationPolicies': return t.notificationPolicies;
+      case 'getNotificationPolicy': return t.notificationPolicies.find((x) => x.id === a.policyId) || null;
+      case 'getNotificationsSettings': return t.notificationsSettings;
+      case 'listOathTokens': return t.oathTokens;
+      case 'getOathToken': return t.oathTokens.find((x) => x.id === a.tokenId) || null;
+      case 'getOathTokenBySerialNumber': return t.oathTokens.find((x) => x.serialNumber === a.serialNumber) || null;
+      case 'getEmailDeliverySettings': return t.emailDelivery;
+      case 'listPhoneDeliverySettings': return t.phoneDelivery;
+      case 'getPhoneDeliverySettings': return t.phoneDelivery.find((x) => x.id === a.settingsId) || null;
+      case 'getWhatsAppDeliverySettings': return { provider: null, enabled: false };
+      // MFA administration — write (in-memory fake tenant only)
+      case 'updateMfaSettings': { Object.assign(t.mfaSettings, { pairing: { ...t.mfaSettings.pairing, pairingKeyFormat: a.pairingKeyFormat || t.mfaSettings.pairing.pairingKeyFormat } }); return t.mfaSettings; }
+      case 'resetMfaSettings': t.mfaSettings = freshTenant().mfaSettings; return t.mfaSettings;
+      case 'createMfaDeviceAuthenticationPolicy': { const x = { id: `d${t.deviceAuthPolicies.length + 1}`, name: a.name }; t.deviceAuthPolicies.push(x); return x; }
+      case 'updateMfaDeviceAuthenticationPolicy': { const x = t.deviceAuthPolicies.find((p) => p.id === a.policyId); if (x) x.name = a.name || x.name; return x || null; }
+      case 'deleteMfaDeviceAuthenticationPolicy': t.deviceAuthPolicies = t.deviceAuthPolicies.filter((x) => x.id !== a.policyId); return { deleted: a.policyId };
+      case 'createFidoPolicy': { const x = { id: `f${t.fidoPolicies.length + 1}`, name: a.name }; t.fidoPolicies.push(x); return x; }
+      case 'updateFidoPolicy': { const x = t.fidoPolicies.find((p) => p.id === a.policyId); if (x) x.name = a.name || x.name; return x || null; }
+      case 'deleteFidoPolicy': t.fidoPolicies = t.fidoPolicies.filter((x) => x.id !== a.policyId); return { deleted: a.policyId };
+      case 'createNotificationPolicy': { const x = { id: `n${t.notificationPolicies.length + 1}`, name: a.name, default: false }; t.notificationPolicies.push(x); return x; }
+      case 'updateNotificationPolicy': { const x = t.notificationPolicies.find((p) => p.id === a.policyId); if (x) x.name = a.name || x.name; return x || null; }
+      case 'deleteNotificationPolicy': t.notificationPolicies = t.notificationPolicies.filter((x) => x.id !== a.policyId); return { deleted: a.policyId };
+      // General-admin sample
       case 'listApplications': return t.applications;
-      case 'getApplication': return t.applications.find((x) => x.id === a.applicationId) || null;
-      case 'listUsers': case 'searchUsers': return t.users;
+      case 'listUsers': return t.users;
       case 'getUser': return t.users.find((x) => x.id === a.userId) || null;
-      case 'createApplication': { const x = { id: `a${t.applications.length + 1}`, name: a.name }; t.applications.push(x); return x; }
       case 'createUser': { const x = { id: `u${t.users.length + 1}`, username: a.username, enabled: true }; t.users.push(x); return x; }
-      case 'disableUser': case 'enableUser': { const u = t.users.find((x) => x.id === a.userId); if (u) u.enabled = name === 'enableUser'; return u || null; }
       case 'deleteUser': t.users = t.users.filter((x) => x.id !== a.userId); return { deleted: a.userId };
-      case 'deleteApplication': t.applications = t.applications.filter((x) => x.id !== a.applicationId); return { deleted: a.applicationId };
       default: return { ok: true, note: `${name} ran against the in-memory fake tenant` };
     }
   }

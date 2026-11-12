@@ -129,7 +129,7 @@ test("Reset calls the server, clears the page state and keeps the saved connecti
 test("health card: count, role hint, identity and expiry countdown; no token anywhere", async () => {
   fakeApi();
   render(<App />);
-  await waitFor(() => expect(screen.getByTestId("tool-count")).toHaveTextContent("6"));
+  await waitFor(() => expect(screen.getByTestId("tool-count")).toHaveTextContent("8"));
   const card = screen.getByTestId("health-card");
   expect(card).toHaveTextContent(/short list usually means missing admin roles/);
   expect(screen.getByTestId("identity")).toHaveTextContent("worker token set");
@@ -181,8 +181,8 @@ test("tools explorer: groups, search, badges with the why, writes-off state; ser
   fakeApi();
   go("#/tools");
   render(<App />);
-  expect(await screen.findByRole("heading", { name: /^Users/ })).toBeInTheDocument();
-  for (const g of ["Applications", "DaVinci", "Other"]) expect(screen.getByRole("heading", { name: new RegExp(`^${g}`) })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /^MFA Settings/ })).toBeInTheDocument();
+  for (const g of ["MFA Settings", "Policies", "Tokens", "Delivery", "Other"]) expect(screen.getByRole("heading", { name: new RegExp(`^${g}`) })).toBeInTheDocument();
   expect(screen.getByTestId("writes-off")).toBeInTheDocument();
   expect(screen.getAllByText("blocked: writes off").length).toBe(3);
   expect(screen.getAllByTestId("class-badge").find((b) => b.textContent === "destructive")).toHaveAttribute("title", expect.stringMatching(/annotation/));
@@ -190,14 +190,14 @@ test("tools explorer: groups, search, badges with the why, writes-off state; ser
   // inert: markup in a description is text, not an element
   expect(screen.getByText(/<img src=x onerror=alert\(1\)>/)).toBeInTheDocument();
   expect(document.querySelector("img")).toBeNull();
-  await userEvent.setup().type(screen.getByLabelText("Search"), "flows");
+  await userEvent.setup().type(screen.getByLabelText("Search"), "fido");
   expect(screen.queryByRole("heading", { name: /^Users/ })).toBeNull();
-  expect(screen.getByRole("heading", { name: /^DaVinci/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^Policies/ })).toBeInTheDocument();
 });
 
 test("tool page: environmentId prefilled, JSON/Form toggle, snake_case warning, read runs directly", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(200, { class: "read", warnings: [], result: { content: [{ type: "text", text: "<b>two users</b>" }] } }) } });
-  go("#/tool/listUsers");
+  go("#/tool/getEmailDeliverySettings");
   render(<App />);
   const user = userEvent.setup();
   const env = await screen.findByLabelText(/environmentId/);
@@ -224,7 +224,7 @@ test("tool page: environmentId prefilled, JSON/Form toggle, snake_case warning, 
 
 test("a blocked write shows why and sends exactly one call", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(403, { error: "writes_disabled", message: '"createUser" is a write tool. Turn on "allow writes".', class: "write", warnings: [] }) } });
-  go("#/tool/createUser");
+  go("#/tool/createFidoPolicy");
   render(<App />);
   await userEvent.setup().click(await screen.findByRole("button", { name: "Call" }));
   expect(await screen.findByRole("heading", { name: /Blocked: writes are off/ })).toBeInTheDocument();
@@ -237,18 +237,18 @@ test("an enabled write opens the confirm dialog with exact arguments and hash, t
   const api = fakeApi({ conns: [conn({ allowWrites: true })], handlers: { "POST /api/connections/:id/call": (b, s, json) => (++n === 1
     ? json(409, { error: "confirm_required", argsHash: "abc123hash", arguments: b.arguments, requiresTypedName: false })
     : json(200, { class: "write", warnings: [], result: { ok: true } })) } });
-  go("#/tool/createUser");
+  go("#/tool/createFidoPolicy");
   render(<App />);
   const user = userEvent.setup();
-  await user.type(await screen.findByLabelText(/^username/), "pat");
+  await user.type(await screen.findByLabelText(/^name/), "pat");
   await user.click(screen.getByRole("button", { name: "Call" }));
   const dlg = await screen.findByRole("dialog");
-  expect(within(dlg).getByTestId("confirm-args")).toHaveTextContent('"username": "pat"');
+  expect(within(dlg).getByTestId("confirm-args")).toHaveTextContent(`"name": "pat"`);
   expect(within(dlg).getByTestId("confirm-hash")).toHaveTextContent("abc123hash");
   await user.click(within(dlg).getByRole("button", { name: /Confirm and send/ }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   const second = api.calls.filter((c) => c.url.endsWith("/call"))[1].body;
-  expect(second).toMatchObject({ confirm: true, argsHash: "abc123hash", tool: "createUser" });
+  expect(second).toMatchObject({ confirm: true, argsHash: "abc123hash", tool: "createFidoPolicy" });
   expect(await screen.findByTestId("call-view")).toHaveTextContent(/"ok": true/);
 });
 
@@ -256,26 +256,26 @@ test("a destructive confirm needs the tool name typed; Cancel and Escape send no
   const api = fakeApi({ conns: [conn({ allowWrites: true })], handlers: { "POST /api/connections/:id/call": (b, s, json) => (!b.confirm
     ? json(409, { error: "confirm_required", argsHash: "h1", arguments: b.arguments, requiresTypedName: true })
     : json(200, { class: "destructive", warnings: [], result: { deleted: "u1" } })) } });
-  go("#/tool/deleteUser");
+  go("#/tool/deleteFidoPolicy");
   render(<App />);
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Call" }));
   let dlg = await screen.findByRole("dialog");
   const go2 = within(dlg).getByRole("button", { name: /Delete: confirm/ });
   expect(go2).toBeDisabled();
-  await user.type(within(dlg).getByLabelText(/Type/), "deleteUse");
+  await user.type(within(dlg).getByLabelText(/Type/), "deleteFidoPolic");
   expect(go2).toBeDisabled();
-  await user.type(within(dlg).getByLabelText(/Type/), "r");
+  await user.type(within(dlg).getByLabelText(/Type/), "y");
   expect(go2).toBeEnabled();
   fireEvent.keyDown(dlg, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(api.calls.filter((c) => c.url.endsWith("/call"))).toHaveLength(1);
   await user.click(screen.getByRole("button", { name: "Call" }));
   dlg = await screen.findByRole("dialog");
-  await user.type(within(dlg).getByLabelText(/Type/), "deleteUser");
+  await user.type(within(dlg).getByLabelText(/Type/), "deleteFidoPolicy");
   await user.click(within(dlg).getByRole("button", { name: /Delete: confirm/ }));
   await waitFor(() => expect(api.calls.filter((c) => c.url.endsWith("/call"))).toHaveLength(3));
-  expect(api.calls.filter((c) => c.url.endsWith("/call"))[2].body).toMatchObject({ confirm: true, argsHash: "h1", typedName: "deleteUser" });
+  expect(api.calls.filter((c) => c.url.endsWith("/call"))[2].body).toMatchObject({ confirm: true, argsHash: "h1", typedName: "deleteFidoPolicy" });
 });
 
 test("a tool the identity does not see is explained, not a blank page", async () => {

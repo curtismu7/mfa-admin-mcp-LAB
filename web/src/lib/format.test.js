@@ -3,11 +3,16 @@ import { classWhy, countdown, groupOf, groupTools, redactForDisplay, redirectUri
 
 const T = (name, area, cls = "read", src = "name") => ({ name, area, class: cls, classSource: src, description: `desc of ${name}` });
 
-test("tools group into the six areas, DaVinci by name", () => {
+test("tools group into the MFA areas, then the general-admin areas", () => {
+  expect(groupOf(T("getMfaSettings", "mfa"))).toBe("MFA Settings");
+  expect(groupOf(T("listFidoPolicies", "fido"))).toBe("Policies");
+  expect(groupOf(T("listNotificationPolicies", "notification"))).toBe("Policies");
+  expect(groupOf(T("listOathTokens", "oath"))).toBe("Tokens");
+  expect(groupOf(T("getEmailDeliverySettings", "email"))).toBe("Delivery");
+  expect(groupOf(T("listPhoneDeliverySettings", "phone"))).toBe("Delivery");
+  expect(groupOf(T("getWhatsAppDeliverySettings", "whatsapp"))).toBe("Delivery");
   expect(groupOf(T("listApplications", "application"))).toBe("Applications");
-  expect(groupOf(T("listPopulations", "population"))).toBe("Populations");
   expect(groupOf(T("getUser", "user"))).toBe("Users");
-  expect(groupOf(T("listDaVinciFlows", "da"))).toBe("DaVinci");
   expect(groupOf(T("describeEnvironment", "environment"))).toBe("Environment");
   expect(groupOf(T("syncTenantWidgets", "tenant"))).toBe("Other");
 });

@@ -8,11 +8,13 @@ const DIAGRAMS = Object.fromEntries(["worker", "interactive"].map((n) => [n, JSO
 
 export const ENV = "11111111-2222-4333-8444-555555555555"; // placeholder, not a tenant
 export const TOOLS = [
-  { name: "listUsers", description: "List users. <img src=x onerror=alert(1)>", inputSchema: { type: "object", properties: { environmentId: { type: "string" }, filter: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "annotation", area: "user" },
-  { name: "listApplications", description: "List apps", inputSchema: { type: "object", properties: { environmentId: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "name", area: "application" },
-  { name: "listDaVinciFlows", description: "flows", inputSchema: { type: "object", properties: {} }, class: "read", classSource: "name", area: "da" },
-  { name: "createUser", description: "Create a user", inputSchema: { type: "object", properties: { environmentId: { type: "string" }, username: { type: "string" } }, required: ["environmentId", "username"] }, class: "write", classSource: "name", area: "user" },
-  { name: "deleteUser", description: "Delete a user", inputSchema: { type: "object", properties: { environmentId: { type: "string" }, userId: { type: "string" } }, required: ["environmentId", "userId"] }, class: "destructive", classSource: "annotation", area: "user" },
+  { name: "getMfaSettings", description: "Environment MFA settings", inputSchema: { type: "object", properties: { environmentId: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "name", area: "mfa" },
+  { name: "listFidoPolicies", description: "List FIDO passkey policies", inputSchema: { type: "object", properties: { environmentId: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "name", area: "fido" },
+  { name: "listNotificationPolicies", description: "List notification policies", inputSchema: { type: "object", properties: { environmentId: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "name", area: "notification" },
+  { name: "listOathTokens", description: "List OATH tokens", inputSchema: { type: "object", properties: { environmentId: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "name", area: "oath" },
+  { name: "getEmailDeliverySettings", description: "Email delivery settings <img src=x onerror=alert(1)>", inputSchema: { type: "object", properties: { environmentId: { type: "string" } }, required: ["environmentId"] }, class: "read", classSource: "name", area: "email" },
+  { name: "createFidoPolicy", description: "Create a FIDO policy", inputSchema: { type: "object", properties: { environmentId: { type: "string" }, name: { type: "string" } }, required: ["environmentId", "name"] }, class: "write", classSource: "name", area: "fido" },
+  { name: "deleteFidoPolicy", description: "Delete a FIDO policy", inputSchema: { type: "object", properties: { environmentId: { type: "string" }, policyId: { type: "string" } }, required: ["environmentId", "policyId"] }, class: "destructive", classSource: "annotation", area: "fido" },
   { name: "syncTenantWidgets", description: "unknown verb", inputSchema: { type: "object", properties: {} }, class: "write", classSource: "unknown", area: "tenant" },
 ];
 export const conn = (o = {}) => ({ id: "c1", kind: "pingone", label: "Mock demo", offline: true, region: "com", envId: ENV, auth: "worker", clientId: "viewer-demo", clientSecret: "set", allowWrites: false, auth_status: { token: "set", expiresAt: Date.now() + 125_000 }, ...o });
@@ -37,7 +39,7 @@ export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers 
       case "POST /api/reset": return json(200, { ok: true, cleared: ["audit"], kept: ["connections"] });
       case "GET /api/connections": return json(200, { connections: state.conns });
       case "POST /api/connections": { const c = conn({ id: "c2", ...body, offline: body.offline === true, clientSecret: body.clientSecret ? "set" : undefined, allowWrites: false, auth_status: {} }); state.conns.push(c); return json(201, c); }
-      case "POST /api/connections/:id/test": return json(200, { ok: true, toolCount: tools.length, byClass: { read: 3, write: 2, destructive: 1 }, hint: "A short list usually means missing admin roles.", fixture: "illustrative sample, not a recording" });
+      case "POST /api/connections/:id/test": return json(200, { ok: true, toolCount: tools.length, byClass: { read: 5, write: 2, destructive: 1 }, hint: "A short list usually means missing admin roles.", fixture: "illustrative sample, not a recording" });
       case "GET /api/connections/:id/tools": return json(200, { count: tools.length, tools });
       case "POST /api/connections/:id/settings": state.conns[0].allowWrites = body.allowWrites; return json(200, state.conns[0]);
       case "GET /api/diagrams": return json(200, { diagrams: Object.values(DIAGRAMS).map((d) => ({ name: d.id, title: d.title })) });

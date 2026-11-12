@@ -92,8 +92,8 @@ try {
   await page.getByRole('heading', { name: /^Applications/ }).waitFor();
   check((await page.getByTestId('class-badge').allInnerTexts()).every((t) => t === 'read'), 'viewer sees read tools only');
   check((await page.locator('a', { hasText: 'createUser' }).count()) === 0, 'no write tool is listed for the viewer');
-  check(await page.getByRole('heading', { name: /^DaVinci/ }).count() === 1, 'DaVinci group present');
-  await page.getByLabel('Search').fill('populations');
+  check(await page.getByRole('heading', { name: /^Policies/ }).count() === 1, 'Policies (FIDO/notification) group present');
+  await page.getByLabel('Search').fill('fido');
   check(await page.locator('.tool').count() === 1, 'search narrows the list');
   await page.getByLabel('Search').fill('');
   await shot('2-tools-viewer');

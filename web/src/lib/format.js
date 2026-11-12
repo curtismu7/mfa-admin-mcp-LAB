@@ -7,12 +7,14 @@ export const CLASS_WHY = {
 };
 export const classWhy = (t) => CLASS_WHY[t.classSource] || CLASS_WHY.name;
 
-export const GROUPS = ["Applications", "Populations", "Users", "DaVinci", "Environment", "Other"];
+export const GROUPS = ["MFA Settings", "Policies", "Tokens", "Delivery", "Applications", "Users", "Environment", "Other"];
 export function groupOf(tool) {
-  if (/davinci|flow/i.test(tool.name)) return "DaVinci";
   const a = String(tool.area || "").toLowerCase();
+  if (/^mfa$/.test(a)) return "MFA Settings";
+  if (/^(device|fido|notification)$/.test(a)) return "Policies";
+  if (/^oath$/.test(a)) return "Tokens";
+  if (/^(email|phone|whatsapp)$/.test(a)) return "Delivery";
   if (a === "application") return "Applications";
-  if (a === "population") return "Populations";
   if (a === "user") return "Users";
   if (a === "environment") return "Environment";
   return "Other";
