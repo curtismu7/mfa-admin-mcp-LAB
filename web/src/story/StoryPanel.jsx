@@ -5,7 +5,7 @@ import { fillAll } from "./fill.js";
 // re-skinned by the chosen vertical, with the Allowed/Blocked switch. Differences: no customer context (the vertical is the
 // viewer's own choice) and presenter
 // mode arrives as a prop. Story text is ours; it renders as text nodes like everything else.
-const KEYS = { vertical: "p1mcp.story.vertical", path: "p1mcp.story.path", open: "p1mcp.story.open" };
+const KEYS = { vertical: "mfaadm.story.vertical", path: "mfaadm.story.path", open: "mfaadm.story.open" };
 const read = (k, fallback) => { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked: not remembered */ } };
 
