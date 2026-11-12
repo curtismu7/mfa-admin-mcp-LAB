@@ -144,7 +144,7 @@ function Shell() {
         <Banner mode={mode} conn={active} />
         <ReturnLink app="mfa-admin-mcp" />
         <div className="top__bar">
-          <h1 className="top__title">PingOne MCP Inspector LAB</h1>
+          <h1 className="top__title">MFA Admin MCP LAB</h1>
           <div className="top__tools">
             <TopMenu
               mode={{ value: mode === "live" ? "real" : "mock", onChange: setMode, realAvailable: info ? liveOk : null, realHint: info?.live?.needs?.length ? `Live is refused (${(info.live.failed ?? []).join(", ")}). ${info.live.needs.join(" ")}` : undefined }}
