@@ -208,7 +208,7 @@
   "stories": [
     {
       "id": "S01",
-      "title": "Why do I only see twelve tools?",
+      "title": "Why do I only see a short tool list?",
       "say": "A short tool list is a roles question first, a server question last.",
       "file": "web/src/data/stories/S01-short-tool-list.json"
     },

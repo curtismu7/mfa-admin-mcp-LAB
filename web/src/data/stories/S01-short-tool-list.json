@@ -1,10 +1,12 @@
 {
   "id": "S01",
-  "title": "Why do I only see twelve tools?",
+  "title": "Why do I only see a short tool list?",
   "goal": "{{lena}} at {{vocab.org}} connects an assistant to PingOne's hosted MCP server and expects the full admin tool set. She sees a short list.",
   "obstacle": "The tool list is gated by the admin roles of the identity that connects. A short list looks like a broken server, so people debug the wrong thing.",
   "control": "{{mark}} checks the roles on the connecting identity first. Role gating is the control: a viewer identity never sees write tools, whatever the client asks for.",
-  "modes": ["tool-list"],
+  "modes": [
+    "tool-list"
+  ],
   "steps": [
     {
       "n": 1,
@@ -30,7 +32,7 @@
     {
       "n": 4,
       "title": "Check the real numbers yourself",
-      "tell": "On a real tenant the count depends on your roles. The skill says a fully privileged worker sees about 60 to 70 tools. That figure is not verified by this app.",
+      "tell": "On a real tenant the count depends on your roles. The hosted PingOne MCP server exposed 114 tools to a fully privileged worker when this lab was built (2026-11-12, including the MFA administration set). That figure is not verified by this app.",
       "say": "I will quote a number only when I have measured it on our tenant.",
       "why": "Numbers from a document are a starting point; the owner checks listed in docs/live-checks.md settle it."
     }

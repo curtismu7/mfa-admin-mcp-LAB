@@ -32,17 +32,17 @@ export default function App() {
 
 function Shell() {
   const { present, set: setPresent } = usePresent();
-  const [fontStep, setFontStep] = useState(() => { const f = store.get("p1mcp.font"); return ["S", "M", "L"].includes(f) ? f : "M"; });
-  useEffect(() => { applyFontSize(fontStep); store.set("p1mcp.font", fontStep); }, [fontStep]);
+  const [fontStep, setFontStep] = useState(() => { const f = store.get("mfaadm.font"); return ["S", "M", "L"].includes(f) ? f : "M"; });
+  useEffect(() => { applyFontSize(fontStep); store.set("mfaadm.font", fontStep); }, [fontStep]);
   const [route, setRoute] = useState(parseHash);
   const [conns, setConns] = useState([]);
-  const [activeId, setActiveId] = useState(() => store.get("p1mcp.active"));
+  const [activeId, setActiveId] = useState(() => store.get("mfaadm.active"));
   const [tests, setTests] = useState({});
   const [testBusy, setTestBusy] = useState(null);
   const [ts, setTs] = useState({ id: null, tools: null, loading: false, error: "" });
   const [msg, setMsg] = useState("");
   const [now, setNow] = useState(Date.now());
-  const [theme, setTheme] = useState(() => store.get("p1mcp.theme") || "system");
+  const [theme, setTheme] = useState(() => store.get("mfaadm.theme") || "system");
   const [info, setInfo] = useState(null); // GET /api/info; null = not known yet
   const [mode, setModeState] = useState("mock");
   const [refusal, setRefusal] = useState("");
@@ -72,10 +72,10 @@ function Shell() {
     });
   }, []);
   useEffect(() => { const f = () => setRoute(parseHash()); window.addEventListener("hashchange", f); return () => window.removeEventListener("hashchange", f); }, []);
-  useEffect(() => { if (theme === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme; store.set("p1mcp.theme", theme); }, [theme]);
+  useEffect(() => { if (theme === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme; store.set("mfaadm.theme", theme); }, [theme]);
 
   const reload = useCallback(async () => { const r = await api.get("/api/connections"); if (r.ok) setConns(r.json.connections); return r.ok ? r.json.connections : []; }, []);
-  const select = useCallback((id) => { setActiveId(id); store.set("p1mcp.active", id); }, []);
+  const select = useCallback((id) => { setActiveId(id); store.set("mfaadm.active", id); }, []);
   // The mode decides which saved connections the page works with: Mock uses the in-process mock demo, Live uses the real servers.
   const modeConns = conns.filter((c) => (mode === "mock") === isMockConn(c));
   const active = modeConns.find((c) => c.id === activeId) || modeConns[0] || null;
@@ -106,8 +106,8 @@ function Shell() {
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
         if (q.get("login") === "ok" && list.some((c) => c.id === q.get("connection"))) { select(q.get("connection")); say("Signed in."); runTest(q.get("connection")); }
         else say(`Sign-in failed (${q.get("reason") || "error"}). Nothing was stored.`);
-      } else if (!list.some((c) => c.id === store.get("p1mcp.active"))) setActiveId(list[0]?.id ?? null);
-      const want = q.get("connection") || (list.some((c) => c.id === store.get("p1mcp.active")) ? store.get("p1mcp.active") : list[0]?.id);
+      } else if (!list.some((c) => c.id === store.get("mfaadm.active"))) setActiveId(list[0]?.id ?? null);
+      const want = q.get("connection") || (list.some((c) => c.id === store.get("mfaadm.active")) ? store.get("mfaadm.active") : list[0]?.id);
       const offline = list.find((c) => c.id === want && c.offline && c.auth === "worker");
       if (offline && !q.get("login")) runTest(offline.id); // the mock demo is safe to test on its own; a real server waits for the button
     })();

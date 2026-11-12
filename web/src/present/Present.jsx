@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 // Presenter mode, simplified from the ID-JAG kit (web/src/present/PresentMode.jsx, same author): bigger type, anything
 // tagged data-admin-only hidden by CSS, key p toggles, Escape exits, optional fullscreen. The kit's step bar is left
 // out: the talk-track panel already has its own steps here.
-const KEY = "p1mcp.present";
+const KEY = "mfaadm.present";
 const PresentCtx = createContext({ present: false, set: () => {} });
 export const usePresent = () => useContext(PresentCtx);
 const inField = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]:not([contenteditable=false])");

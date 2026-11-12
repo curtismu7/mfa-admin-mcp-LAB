@@ -24,10 +24,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   installNetguard(); // zero outbound by default; before anything else can open a socket. Live takes a permit per host (app.js).
   const checks = runChecks();
   if (!allPassed(checks)) {
-    for (const c of checks.filter((x) => x.level === 'fail')) console.error(`[p1mcp] refusing to start: ${c.id}: ${c.detail}`);
+    for (const c of checks.filter((x) => x.level === 'fail')) console.error(`[mfaadm] refusing to start: ${c.id}: ${c.detail}`);
     process.exit(1);
   }
   const { url } = await startHttpServer();
-  console.log(`[p1mcp] listening on ${url} (loopback unless MFAADM_BIND is set)`);
+  console.log(`[mfaadm] listening on ${url} (loopback unless MFAADM_BIND is set)`);
   process.on('SIGTERM', () => process.exit(0));
 }

@@ -6,7 +6,7 @@ Before you start, say which mode you are in: the header toggle, the `Mode:` chip
 
 Press P (or the Present button) for presenter mode: larger text, and the banner and the mode stay on screen. Esc leaves it. Reset (header) puts the demo back to its start: audit history, tokens, writes off, the mock's fake tenant, and the diagram boxes.
 
-## S01. Why do I only see twelve tools?
+## S01. Why do I only see a short tool list?
 
 Page: Tools.
 
@@ -40,7 +40,7 @@ Why it matters: The fix for a short list is a role assignment in PingOne, not a 
 
 ### Step 4. Check the real numbers yourself
 
-Do: On a real tenant the count depends on your roles. The skill says a fully privileged worker sees about 60 to 70 tools. That figure is not verified by this app.
+Do: On a real tenant the count depends on your roles. The hosted PingOne MCP server exposed 114 tools to a fully privileged worker when this lab was built (2026-11-12, including the MFA administration set). That figure is not verified by this app.
 
 Say: "I will quote a number only when I have measured it on our tenant."
 

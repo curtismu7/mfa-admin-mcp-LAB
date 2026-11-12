@@ -67,7 +67,7 @@ If the port is taken:
 4. Do not use 8080, 5173, 3000, 4000, 4400, 4510, 4600-4601, 18080, 19080 or 19090.
    Those are taken by other demos or other tools.
 
-Other ports this app uses (dev only): the Vite dev server on 5202 (`VITE_PORT`), `npm run e2e` on 5231 (`E2E_PORT`), and the Docker host port `HOST_PORT` (default 7815). The in-process mock listens on an ephemeral loopback port, and the tests use ephemeral ports. The Vite dev server (5202) and the e2e port (5231) are ephemeral dev conveniences outside the app's declared port range; the published Docker port is 7815, loopback only.
+Other ports this app uses (dev only): the Vite dev server on 5202 (`VITE_PORT`), `npm run e2e` on 7816 (`E2E_PORT`), and the Docker host port `HOST_PORT` (default 7815). The in-process mock listens on an ephemeral loopback port, and the tests use ephemeral ports. The Vite dev server (5202) and the e2e port (7816) are ephemeral dev conveniences outside the app's declared port range; the published Docker port is 7815, loopback only.
 
 ## Mock and live modes
 

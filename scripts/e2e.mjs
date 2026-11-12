@@ -3,7 +3,7 @@
 // hosted PingOne MCP server) and the mock authorization server behind both the worker and the interactive login. No real
 // PingOne tenant is contacted: the server runs under a netguard that records any non-loopback attempt (asserted empty),
 // and the browser's requests are checked to stay on loopback. Screenshots go to .data/e2e-screenshots (git-ignored).
-//   npm run build && node scripts/e2e.mjs        (E2E_PORT, default 5231; a second server without the Live opt-in runs on E2E_PORT+1)
+//   npm run build && node scripts/e2e.mjs        (E2E_PORT, default 7816; a second server without the Live opt-in runs on E2E_PORT+1)
 // Pattern from hostile-mcp scripts/e2e.mjs (same author).
 import AxeBuilder from '@axe-core/playwright';
 import { spawn } from 'node:child_process';
@@ -16,7 +16,7 @@ import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shots = path.join(root, '.data', 'e2e-screenshots');
-const port = Number(process.env.E2E_PORT) || 5231;
+const port = Number(process.env.E2E_PORT) || 7816;
 const base = `http://localhost:${port}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -60,10 +60,11 @@ try {
   check((await page.evaluate(() => document.activeElement.textContent)) === 'Skip to content', 'the first Tab stop is the skip link');
   await page.keyboard.press('Enter');
   check(await page.evaluate(() => document.activeElement.id) === 'main', 'the skip link moves focus to the main region');
-  // Rule 19 default: Real if configured, else Mock. This server has the owner's Live opt-in, so the page opens in Live; press Mock.
+  // Rule 19 default: Real if configured, else Mock. This server has the owner's Live opt-in, so the page opens in Live; switch to Mock.
+  // The shared TopMenu renders the mode as a <select> (option "mock"), not a button.
   await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor();
   check((await page.getByTestId('banner').innerText()).startsWith('LIVE mode'), 'with the Live opt-in the page opens in Live (rule 19 default) and the banner says so');
-  await page.getByRole('button', { name: 'Mock', exact: true }).click();
+  await page.getByTestId('mode-select').selectOption('mock');
   await page.getByTestId('mode').filter({ hasText: 'Mode: mock' }).waitFor();
   check((await page.getByTestId('banner').innerText()).startsWith('MOCK mode, simulated'), 'with no connection the banner says Mock mode');
   check((await page.getByTestId('mode').innerText()) === 'Mode: mock', 'the mode chip says Mode: mock');
@@ -74,7 +75,7 @@ try {
   check((await page.getByTestId('banner').innerText()).includes('not a recording'), 'banner says the catalog is a sample, not a recording');
   check((await page.getByTestId('banner').innerText()).includes('Writes are off'), 'banner says writes are off');
   const viewerCount = await count();
-  check(viewerCount === 8, `viewer role sees 8 tools (saw ${viewerCount})`);
+  check(viewerCount === 18, `viewer role sees 18 read tools (saw ${viewerCount})`);
   check((await page.getByTestId('health-card').innerText()).includes('missing admin roles'), 'health card carries the role hint');
   check((await page.getByTestId('identity').innerText()).includes('worker token set'), 'identity shows worker token set (no token value)');
   check(/\d+m \d\ds/.test(await page.getByTestId('expiry').innerText()), 'token expiry countdown is shown');
@@ -83,7 +84,7 @@ try {
   // the header toggle exists on every page and Live is allowed on this server
   for (const p of ['connections', 'tools', 'raw', 'audit', 'mcp-first', 'stories', 'diagram']) {
     await go(p);
-    check(await page.getByTestId('mode-mock').count() === 1 && await page.getByTestId('mode-live').count() === 1 && (await page.getByTestId('banner').innerText()).startsWith('MOCK mode'), `the Mock / Live toggle, the mode and the banner are on /${p}`);
+    check(await page.getByTestId('mode-select').count() === 1 && await page.getByTestId('mode-real').count() === 1 && (await page.getByTestId('banner').innerText()).startsWith('MOCK mode'), `the Mock / Real toggle, the mode and the banner are on /${p}`);
   }
   await go('connections');
 
@@ -94,16 +95,16 @@ try {
   check((await page.locator('a', { hasText: 'createUser' }).count()) === 0, 'no write tool is listed for the viewer');
   check(await page.getByRole('heading', { name: /^Policies/ }).count() === 1, 'Policies (FIDO/notification) group present');
   await page.getByLabel('Search').fill('fido');
-  check(await page.locator('.tool').count() === 1, 'search narrows the list');
+  check(await page.locator('.tool').count() === 2, 'search narrows the list (viewer FIDO tools only)');
   await page.getByLabel('Search').fill('');
   await shot('2-tools-viewer');
 
   // role switch -> admin
   await page.getByRole('link', { name: 'Connections' }).click();
   await page.getByRole('button', { name: 'admin', exact: true }).click();
-  await page.waitForFunction(() => Number(document.querySelector('[data-testid="tool-count"]')?.textContent) > 8);
+  await page.waitForFunction(() => { const n = Number(document.querySelector('[data-testid="tool-count"]')?.textContent); return n > 8 && n !== 18; });
   const adminCount = await count();
-  check(adminCount === 21, `admin role sees 21 tools (saw ${adminCount})`);
+  check(adminCount === 33, `admin role sees 33 tools (saw ${adminCount})`);
   await page.getByRole('link', { name: 'Tools', exact: true }).click();
   await page.getByRole('heading', { name: /^Users/ }).waitFor();
   const badges = await page.getByTestId('class-badge').allInnerTexts();
@@ -182,7 +183,7 @@ try {
   await page.evaluate(async (url) => { await fetch('/api/connections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'custom', label: 'hostile stub', url }) }); }, `http://127.0.0.1:${hostileStub.address().port}/mcp`);
   await page.getByRole('link', { name: 'Connections' }).click();
   await page.reload();
-  await page.getByTestId('mode-live').click();
+  await page.getByTestId('mode-select').selectOption('real');
   // The toggle POSTs /api/mode and then reloads the data, so wait for the switch to land before checking it.
   await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor({ timeout: 10_000 }).catch(() => {});
   await page.locator('[data-testid="conn-card"]', { hasText: 'Mock demo' }).first().waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {});
@@ -198,7 +199,7 @@ try {
   check(/MT-HI-001/.test(flagged) && /MT-EX-001/.test(flagged) && /high/.test(flagged), 'scan of the hostile stub flags hidden instructions and an off-box default');
   check(await page.locator('[data-testid="scan-result"] img, [data-testid="scan-result"] important').count() === 0, 'poisoned text is shown as inert text');
   await shot('8b-scan-hostile');
-  await page.getByTestId('mode-mock').click();
+  await page.getByTestId('mode-select').selectOption('mock');
   await page.getByTestId('mode').filter({ hasText: 'Mode: mock' }).waitFor({ timeout: 10_000 }).catch(() => {});
   check((await page.getByTestId('mode').innerText()) === 'Mode: mock', 'pressing Mock goes back');
   await page.getByRole('link', { name: 'Connections' }).click();
@@ -209,7 +210,7 @@ try {
   await page.getByRole('button', { name: 'Send' }).click();
   await page.getByTestId('call-view').getByText(/listApplications/).first().waitFor();
   await page.getByLabel(/^Method/).fill('tools/call');
-  await page.getByLabel(/Params/).fill('{"name":"disableUser","arguments":{"environmentId":"11111111-2222-4333-8444-555555555555","userId":"u1"}}');
+  await page.getByLabel(/Params/).fill('{"name":"deleteFidoPolicy","arguments":{"environmentId":"11111111-2222-4333-8444-555555555555","policyId":"f1"}}');
   await page.getByRole('button', { name: 'Send' }).click();
   await dlg.waitFor();
   check(true, 'raw tools/call goes through the confirm gate');
@@ -241,7 +242,7 @@ try {
   await page.getByRole('button', { name: 'Simulate' }).click();
   await page.getByTestId('caption').getByText(/Step 5 of 5/).waitFor({ timeout: 8000 });
   await shot('11-diagram');
-  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await page.locator('main').getByRole('button', { name: 'Reset', exact: true }).click();
   let reset = null; // Reset remounts the flow (positions and pan/zoom), so wait for the box to be laid out again
   for (let i = 0; i < 40; i++) { reset = await node.boundingBox().catch(() => null); if (reset && Math.abs(reset.y - before.y) < 6) break; await page.waitForTimeout(100); }
   check(!!reset && Math.abs(reset.y - before.y) < 6 && (await page.getByTestId('caption').innerText()).includes('Press Simulate'), 'Reset restores the box and the caption');
@@ -276,9 +277,9 @@ try {
   const refusedPage = await ctx.newPage();
   const refusedBase = `http://localhost:${refusedPort}`;
   await refusedPage.goto(`${refusedBase}/#/connections`);
-  await refusedPage.waitForFunction(() => document.querySelector('[data-testid="mode-live"]')?.title?.length > 0);
-  const refusedTitle = (await refusedPage.getByTestId('mode-live').getAttribute('title')) || '';
-  check(await refusedPage.getByTestId('mode-live').isDisabled() && refusedTitle.includes('owner-opt-in') && (await refusedPage.getByTestId('mode').innerText()) === 'Mode: mock', 'without the opt-in, Live is disabled with the reason and the page stays in Mock');
+  await refusedPage.waitForFunction(() => document.querySelector('[data-testid="mode-real"]')?.title?.length > 0);
+  const refusedTitle = (await refusedPage.getByTestId('mode-real').getAttribute('title')) || '';
+  check(await refusedPage.getByTestId('mode-real').isDisabled() && refusedTitle.includes('owner-opt-in') && (await refusedPage.getByTestId('mode').innerText()) === 'Mode: mock', 'without the opt-in, Real (Live) is disabled with the reason and the page stays in Mock');
   const refusedInfo = await (await fetch(`${refusedBase}/api/info`)).json();
   const liveTry = await fetch(`${refusedBase}/api/connections`, { method: 'POST', headers: { 'content-type': 'application/json', origin: refusedBase }, body: JSON.stringify({ kind: 'custom', url: 'http://127.0.0.1:9/mcp' }) });
   check(refusedInfo.live.available === false && liveTry.status === 403, 'the API agrees: /api/info says Live is unavailable and a Live connection is refused (403)');

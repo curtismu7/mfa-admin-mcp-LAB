@@ -324,7 +324,7 @@ test("stories page: both talk tracks, vertical switch re-skins, Blocked path sho
   fakeApi();
   go("#/stories");
   render(<App />);
-  expect(await screen.findByText("Why do I only see twelve tools?")).toBeInTheDocument();
+  expect(await screen.findByText("Why do I only see a short tool list?")).toBeInTheDocument();
   expect(screen.getByText("A write needs a second look")).toBeInTheDocument();
   const user = userEvent.setup();
   await user.selectOptions(screen.getAllByLabelText("Vertical")[0], "banking");
