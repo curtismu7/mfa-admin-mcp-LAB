@@ -1,5 +1,5 @@
 // Preflight: the same checks GET /api/health reports from, plus the netguard self-test and whether the port is free.
-//   PORT=5230 npm run doctor        (the server port; 7815-7819 only)
+//   PORT=7816 npm run doctor        (the server port; 7815-7819 only)
 // Prints only pass/fail lines, never the value of a setting. Exit 1 on any failure. Needs no network.
 import net from 'node:net';
 import path from 'node:path';

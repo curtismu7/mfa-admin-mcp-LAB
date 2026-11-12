@@ -89,7 +89,7 @@ test('the CI workflow is GitHub-hosted, Node 26 only, and carries the forbidden-
   assert.match(ci, /forbidden-strings:/);
   assert.match(ci, /gitleaks/);
   assert.match(ci, /actions\/checkout@v5/);
-  assert.match(ci, /PORT=5230 npm run doctor/);
+  assert.match(ci, /PORT=7816 npm run doctor/);
 });
 
 test('the repo ships no k8s manifests, no deploy scripts, no hosted mode and no bare MODE', () => {
