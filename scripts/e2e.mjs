@@ -279,7 +279,11 @@ try {
   await refusedPage.goto(`${refusedBase}/#/connections`);
   await refusedPage.waitForFunction(() => document.querySelector('[data-testid="mode-real"]')?.title?.length > 0);
   const refusedTitle = (await refusedPage.getByTestId('mode-real').getAttribute('title')) || '';
-  check(await refusedPage.getByTestId('mode-real').isDisabled() && refusedTitle.includes('owner-opt-in') && (await refusedPage.getByTestId('mode').innerText()) === 'Mode: mock', 'without the opt-in, Real (Live) is disabled with the reason and the page stays in Mock');
+  const refusedDisabled = await refusedPage.evaluate(() => document.querySelector('[data-testid="mode-real"]')?.disabled === true);
+  await refusedPage.getByTestId('mode-select').selectOption('real').catch(() => {});
+  await refusedPage.waitForTimeout(500);
+  const refusedStaysMock = (await refusedPage.getByTestId('mode').innerText()) === 'Mode: mock';
+  check(refusedDisabled && refusedTitle.includes('owner-opt-in') && refusedStaysMock, 'without the opt-in, Real (Live) is disabled with the reason and the page stays in Mock');
   const refusedInfo = await (await fetch(`${refusedBase}/api/info`)).json();
   const liveTry = await fetch(`${refusedBase}/api/connections`, { method: 'POST', headers: { 'content-type': 'application/json', origin: refusedBase }, body: JSON.stringify({ kind: 'custom', url: 'http://127.0.0.1:9/mcp' }) });
   check(refusedInfo.live.available === false && liveTry.status === 403, 'the API agrees: /api/info says Live is unavailable and a Live connection is refused (403)');
