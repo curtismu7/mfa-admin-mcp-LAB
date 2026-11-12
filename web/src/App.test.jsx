@@ -7,7 +7,7 @@ import { conn, fakeApi, LIVE_REFUSED, TOOLS } from "./test-helpers.js";
 
 beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catch { /* none */ } delete document.documentElement.dataset.present; });
 const pressLive = async (user) => { await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); await user.selectOptions(screen.getByTestId("mode-select"), "real"); };
-const live = () => { try { localStorage.setItem("p1mcp.mode", "live"); } catch { /* none */ } };
+const live = () => { try { localStorage.setItem("mfaadm.mode", "live"); } catch { /* none */ } };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const go = (h) => { window.location.hash = h; window.dispatchEvent(new HashChangeEvent("hashchange")); };
 
@@ -60,7 +60,7 @@ test("the Mock / Live toggle is in the header of every page, and the banner and 
     await screen.findByTestId("mode-select");
     expect(screen.getByTestId("mode")).toHaveTextContent("Mode: live");
   }
-  expect(localStorage.getItem("p1mcp.mode")).toBeNull(); // the mode is never stored
+  expect(localStorage.getItem("mfaadm.mode")).toBeNull(); // the mode is never stored
 });
 
 test("the page always opens in Mock: after pressing Live, a reload is in Mock again, and a stale stored 'live' is ignored while Live is allowed", async () => {
