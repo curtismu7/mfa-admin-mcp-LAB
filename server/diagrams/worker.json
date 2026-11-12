@@ -1,0 +1,160 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "worker",
+  "title": "Worker application (client_credentials)",
+  "lede": "A worker application signs itself in with a client id and secret; the token stays on this app's server. Simulated in Mock.",
+  "groups": {
+    "client": {
+      "label": "Your side",
+      "color": "dark"
+    },
+    "app": {
+      "label": "This app",
+      "color": "red"
+    },
+    "idp": {
+      "label": "PingOne sign-in",
+      "color": "blue"
+    },
+    "pingone": {
+      "label": "PingOne admin plane",
+      "color": "grey"
+    }
+  },
+  "nodes": [
+    {
+      "id": "browser",
+      "label": "Your browser",
+      "group": "client",
+      "sub": [
+        "This page. Never sees a token."
+      ],
+      "x": 0,
+      "y": 150
+    },
+    {
+      "id": "app",
+      "label": "This app (server)",
+      "group": "app",
+      "sub": [
+        "Holds secrets and tokens, runs the safety gate, writes the audit."
+      ],
+      "x": 300,
+      "y": 150
+    },
+    {
+      "id": "token",
+      "label": "PingOne token / authorization endpoint",
+      "group": "idp",
+      "sub": [
+        "Mints the bearer token."
+      ],
+      "x": 300,
+      "y": -60
+    },
+    {
+      "id": "mcp",
+      "label": "Hosted PingOne MCP server",
+      "group": "pingone",
+      "sub": [
+        "Lists tools gated by role."
+      ],
+      "x": 600,
+      "y": 150
+    },
+    {
+      "id": "api",
+      "label": "PingOne admin API",
+      "group": "pingone",
+      "sub": [
+        "Apps, populations, users, DaVinci, environment."
+      ],
+      "x": 900,
+      "y": 150
+    }
+  ],
+  "edges": [
+    {
+      "source": "browser",
+      "target": "app",
+      "label": "request",
+      "handles": [
+        "r1",
+        "l1"
+      ]
+    },
+    {
+      "source": "app",
+      "target": "token",
+      "label": "request token",
+      "handles": [
+        "t1",
+        "b1"
+      ]
+    },
+    {
+      "source": "token",
+      "target": "app",
+      "label": "access token",
+      "handles": [
+        "b2",
+        "t2"
+      ]
+    },
+    {
+      "source": "app",
+      "target": "mcp",
+      "label": "tools/list, tools/call + Bearer",
+      "handles": [
+        "r1",
+        "l1"
+      ]
+    },
+    {
+      "source": "mcp",
+      "target": "api",
+      "label": "admin action",
+      "handles": [
+        "r1",
+        "l1"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "title": "You ask this app",
+      "what": "You press Test connection or Call. The page asks this app, not PingOne.",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "Worker credentials go to the token endpoint",
+      "what": "This app sends your worker's client id and secret to the token endpoint (client_credentials).",
+      "edges": [
+        1
+      ]
+    },
+    {
+      "title": "A bearer token comes back",
+      "what": "A bearer token comes back and stays on this machine's server. The page only learns it is set.",
+      "edges": [
+        2
+      ]
+    },
+    {
+      "title": "The safety gate, then the MCP call",
+      "what": "The safety gate lets a read through (or checks the confirmation of a write); the app calls the hosted MCP server with the Bearer token.",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "The server acts on the admin API",
+      "what": "UNVERIFIED that the hosted server accepts a worker token (sources disagree). If it does, the server runs the admin action for the roles the worker holds. A short tool list means missing roles (pingone-mcp skill).",
+      "edges": [
+        4
+      ]
+    }
+  ]
+}

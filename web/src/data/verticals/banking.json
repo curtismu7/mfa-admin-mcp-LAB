@@ -1,0 +1,25 @@
+{
+  "id": "banking",
+  "displayName": "Super Banking",
+  "tagline": "AI-Powered Banking Demo",
+  "source": "Names and colors from the ID-JAG kit vertical pack; vocab rewritten for this demo",
+  "brand": {
+    "primary": "#b91c1c",
+    "headerStart": "#1d4ed8",
+    "headerEnd": "#1d4ed8"
+  },
+  "vocab": {
+    "org": "the bank",
+    "desk": "the treasury desk"
+  },
+  "cast": {
+    "lena": {
+      "name": "Lena",
+      "role": "Employee who uses an AI assistant"
+    },
+    "mark": {
+      "name": "Mark",
+      "role": "Security reviewer who approves tool servers"
+    }
+  }
+}

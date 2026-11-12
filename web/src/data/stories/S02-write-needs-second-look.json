@@ -1,0 +1,52 @@
+{
+  "id": "S02",
+  "title": "A write needs a second look",
+  "goal": "{{mark}} wants to change one setting on a tenant that {{vocab.org}} runs, through the hosted MCP server, without risking a wrong write.",
+  "obstacle": "An admin-plane MCP tool can change or delete real tenant objects. A typed call that looks right can still carry the wrong argument.",
+  "control": "Writes are off by default. When they are on, each call shows the exact arguments and a hash of them, and a destructive call also needs the tool name typed.",
+  "modes": ["gate"],
+  "steps": [
+    {
+      "n": 1,
+      "title": "Writes are off",
+      "tell": "Call a write tool with writes off. The call is refused before it leaves this app, and the refusal is in the audit log.",
+      "say": "By default this tool can look and not touch.",
+      "why": "A read-only default turns a wrong click into a harmless one.",
+      "blocked": { "tell": "The call is refused with a message that names the setting to change. Nothing was sent to the server.", "say": "Blocked, logged, nothing sent." }
+    },
+    {
+      "n": 2,
+      "title": "Turn writes on for this connection",
+      "tell": "{{mark}} turns on allow writes for one connection. A red banner stays visible while it is on.",
+      "say": "Writes are a decision for this connection, and the page says so.",
+      "why": "The banner keeps the state visible for everyone who looks at the screen."
+    },
+    {
+      "n": 3,
+      "title": "Review the exact arguments",
+      "tell": "Press Call. A dialog shows the exact arguments and their hash. Changing an argument after review changes the hash and the call is refused.",
+      "say": "What I approve is exactly what runs.",
+      "why": "The hash binds the approval to the arguments, so a swapped argument cannot ride on an earlier approval.",
+      "blocked": { "tell": "If the arguments change after the review the hash no longer matches and the server of this app refuses the call.", "say": "The approval does not carry over to different arguments." }
+    },
+    {
+      "n": 4,
+      "title": "Type the name for a destructive call",
+      "tell": "A delete asks {{mark}} to type the tool name. Only then does the confirm button work.",
+      "say": "A delete costs a few extra keystrokes on purpose.",
+      "why": "Typing the name forces a read of what is about to happen."
+    },
+    {
+      "n": 5,
+      "title": "Read the audit",
+      "tell": "Every call, allowed or blocked, is in the audit page with secrets redacted.",
+      "say": "I can show exactly what was asked, by whom, and what happened.",
+      "why": "A log of blocked calls is as useful as a log of allowed ones."
+    }
+  ],
+  "proof": {
+    "happy": "The write ran once, after the review, and the audit shows the call with its hash.",
+    "blocked": "The write was refused (writes off, or changed arguments), and the audit shows the refusal."
+  },
+  "say": "Nothing writes until someone has looked at exactly what it will write."
+}

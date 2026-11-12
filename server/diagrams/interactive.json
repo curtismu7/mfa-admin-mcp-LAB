@@ -1,0 +1,194 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "interactive",
+  "title": "Interactive admin sign-in (code + PKCE)",
+  "lede": "An administrator signs in through PingOne's authorization server; the tokens stay on this app's server. Simulated in Mock.",
+  "groups": {
+    "client": {
+      "label": "Your side",
+      "color": "dark"
+    },
+    "app": {
+      "label": "This app",
+      "color": "red"
+    },
+    "idp": {
+      "label": "PingOne sign-in",
+      "color": "blue"
+    },
+    "pingone": {
+      "label": "PingOne admin plane",
+      "color": "grey"
+    }
+  },
+  "nodes": [
+    {
+      "id": "browser",
+      "label": "Your browser",
+      "group": "client",
+      "sub": [
+        "This page. Never sees a token."
+      ],
+      "x": 0,
+      "y": 150
+    },
+    {
+      "id": "app",
+      "label": "This app (server)",
+      "group": "app",
+      "sub": [
+        "Holds secrets and tokens, runs the safety gate, writes the audit."
+      ],
+      "x": 300,
+      "y": 150
+    },
+    {
+      "id": "token",
+      "label": "PingOne token / authorization endpoint",
+      "group": "idp",
+      "sub": [
+        "Mints the bearer token."
+      ],
+      "x": 300,
+      "y": -60
+    },
+    {
+      "id": "mcp",
+      "label": "Hosted PingOne MCP server",
+      "group": "pingone",
+      "sub": [
+        "Lists tools gated by role."
+      ],
+      "x": 600,
+      "y": 150
+    },
+    {
+      "id": "api",
+      "label": "PingOne admin API",
+      "group": "pingone",
+      "sub": [
+        "Apps, populations, users, DaVinci, environment."
+      ],
+      "x": 900,
+      "y": 150
+    }
+  ],
+  "edges": [
+    {
+      "source": "browser",
+      "target": "app",
+      "label": "request",
+      "handles": [
+        "r1",
+        "l1"
+      ]
+    },
+    {
+      "source": "browser",
+      "target": "token",
+      "label": "sign in (redirect)",
+      "dashed": true,
+      "handles": [
+        "t1",
+        "l1"
+      ]
+    },
+    {
+      "source": "token",
+      "target": "browser",
+      "label": "back with a code",
+      "dashed": true,
+      "handles": [
+        "l2",
+        "t2"
+      ]
+    },
+    {
+      "source": "app",
+      "target": "token",
+      "label": "request token",
+      "handles": [
+        "t1",
+        "b1"
+      ]
+    },
+    {
+      "source": "token",
+      "target": "app",
+      "label": "access token",
+      "handles": [
+        "b2",
+        "t2"
+      ]
+    },
+    {
+      "source": "app",
+      "target": "mcp",
+      "label": "tools/list, tools/call + Bearer",
+      "handles": [
+        "r1",
+        "l1"
+      ]
+    },
+    {
+      "source": "mcp",
+      "target": "api",
+      "label": "admin action",
+      "handles": [
+        "r1",
+        "l1"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "title": "You press Sign in",
+      "what": "You press Sign in. This app prepares a state, a nonce and a PKCE challenge and answers with the authorization URL.",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "Your browser goes to PingOne",
+      "what": "Your browser goes to PingOne's authorization server. This is the tool's connection to a third party, not a sign-in to this app.",
+      "edges": [
+        1
+      ]
+    },
+    {
+      "title": "PingOne sends the code back",
+      "what": "PingOne redirects back to the exact registered loopback address with a one-time code and the state.",
+      "edges": [
+        2
+      ]
+    },
+    {
+      "title": "This app exchanges the code",
+      "what": "This app checks the state, exchanges the code with the PKCE verifier, and validates the issuer and nonce.",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "Tokens stay on the server",
+      "what": "Access and refresh tokens are kept on the server. The page shows only who is signed in.",
+      "edges": [
+        4
+      ]
+    },
+    {
+      "title": "Calls carry the admin's own token",
+      "what": "Calls go to the hosted MCP server with the admin's own token, so the list matches that admin's roles.",
+      "edges": [
+        5
+      ]
+    },
+    {
+      "title": "The server acts as that admin",
+      "what": "The server acts on the admin plane with that admin's permissions.",
+      "edges": [
+        6
+      ]
+    }
+  ]
+}

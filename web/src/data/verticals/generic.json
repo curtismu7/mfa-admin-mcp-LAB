@@ -1,0 +1,25 @@
+{
+  "id": "generic",
+  "displayName": "Generic",
+  "tagline": "Tool metadata is untrusted input",
+  "source": "demo default",
+  "brand": {
+    "primary": "#d20e0f",
+    "headerStart": "#051727",
+    "headerEnd": "#051727"
+  },
+  "vocab": {
+    "org": "the company",
+    "desk": "the finance team"
+  },
+  "cast": {
+    "lena": {
+      "name": "Lena",
+      "role": "Employee who uses an AI assistant"
+    },
+    "mark": {
+      "name": "Mark",
+      "role": "Security reviewer who approves tool servers"
+    }
+  }
+}

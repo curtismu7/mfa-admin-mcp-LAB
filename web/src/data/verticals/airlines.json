@@ -1,0 +1,25 @@
+{
+  "id": "airlines",
+  "displayName": "Airline",
+  "tagline": "Good Leads The Way",
+  "source": "Names and colors from the ID-JAG kit vertical pack; vocab rewritten for this demo",
+  "brand": {
+    "primary": "#002244",
+    "headerStart": "#002244",
+    "headerEnd": "#1414D2"
+  },
+  "vocab": {
+    "org": "the airline",
+    "desk": "the revenue accounting team"
+  },
+  "cast": {
+    "lena": {
+      "name": "Lena",
+      "role": "Employee who uses an AI assistant"
+    },
+    "mark": {
+      "name": "Mark",
+      "role": "Security reviewer who approves tool servers"
+    }
+  }
+}

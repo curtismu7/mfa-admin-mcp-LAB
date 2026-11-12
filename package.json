@@ -1,0 +1,35 @@
+{
+  "name": "pingone-mcp-inspector-lab",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "PingOne MCP Inspector LAB: connect to PingOne's hosted MCP server (or any MCP server), list its tools with a safety class, and call them read-only by default. Mock by default; Live is owner-run.",
+  "license": "MIT",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "start": "npm start -w server",
+    "dev": "npm run dev -w server & npm run dev -w web",
+    "test": "npm test -w server && npm test -w web && node --test scripts/*.test.mjs",
+    "build": "npm run build -w web",
+    "doctor": "node scripts/doctor.mjs",
+    "reset": "node scripts/reset.mjs",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "smoke": "node scripts/smoke.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "talk-track": "node scripts/build-talk-track.mjs",
+    "content-pack": "node scripts/build-content-pack.mjs && node scripts/validate-content-pack.mjs",
+    "classification": "node scripts/gen-classification.mjs",
+    "verify-running": "node scripts/verify-running.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "ajv": "^8.20.0",
+    "playwright": "^1.64.1"
+  }
+}

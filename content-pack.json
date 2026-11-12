@@ -1,0 +1,222 @@
+{
+  "schema": "demo-content-pack/1",
+  "id": "pingone-mcp-inspector",
+  "title": "PingOne MCP Inspector LAB",
+  "version": "0.3.0",
+  "demo": {
+    "id": "pingone-mcp-inspector",
+    "name": "PingOne MCP Inspector LAB",
+    "catalog": "D3",
+    "baseUrl": "http://localhost:5201",
+    "doctor": "/api/health",
+    "tags": [
+      "mcp",
+      "pingone",
+      "admin-plane",
+      "read-only"
+    ]
+  },
+  "glossary": [
+    {
+      "id": "admin-plane",
+      "term": "Admin plane",
+      "definition": "The part of PingOne that manages PingOne itself: applications, populations, users, DaVinci flows, environment configuration. It is not your own product's data or end-user tools.",
+      "aliases": [
+        "management plane"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "term": "Audit log",
+      "definition": "A local, append-only record of every call, allowed or blocked: when, which connection, which tool, its class, the outcome, the arguments (secret-looking keys redacted) and their hash. Secrets and tokens are scrubbed before anything is written.",
+      "aliases": []
+    },
+    {
+      "id": "authorization-code-pkce",
+      "term": "Authorization code with PKCE",
+      "definition": "The interactive sign-in: the admin is sent to the authorization server, approves, and comes back with a code that is exchanged using a one-time secret (the PKCE verifier, S256). This app adds state and nonce, checks the issuer, and accepts the callback only on the exact registered loopback redirect URI.",
+      "aliases": [
+        "PKCE",
+        "interactive admin OAuth"
+      ]
+    },
+    {
+      "id": "client-credentials",
+      "term": "Client credentials",
+      "definition": "The OAuth grant a worker application uses: it presents its own client id and secret at the token endpoint and gets a bearer token. The secret is only ever sent to the token endpoint; the MCP endpoint gets the bearer token.",
+      "aliases": [
+        "client_credentials"
+      ]
+    },
+    {
+      "id": "confirm-gate",
+      "term": "Confirm gate",
+      "definition": "Even with writes allowed, a write call is refused until the request carries confirm:true and the hash of the exact arguments that were shown. Destructive calls also need the tool name typed. Change one argument and the hash no longer matches.",
+      "aliases": [
+        "argsHash",
+        "second look"
+      ]
+    },
+    {
+      "id": "hosted-mcp-server",
+      "term": "Hosted MCP server",
+      "definition": "PingOne's own MCP endpoint, run by Ping, for the Management API admin plane. This app connects to it as a client, lists its tools and calls them. Endpoint shape: https://api.pingone.{region}/v1/environments/{envId}/mcp (pingone-mcp skill; a second shape seen in AI-DEMO2 is UNVERIFIED).",
+      "aliases": [
+        "PingOne MCP server"
+      ]
+    },
+    {
+      "id": "mcp-first-rule",
+      "term": "MCP-first rule",
+      "definition": "Prefer the hosted MCP tools for application, population and user reads, user management and DaVinci reads; fall back to the Management API for what MCP does not cover, and on any MCP failure do not retry in a loop (pingone-mcp skill).",
+      "aliases": [
+        "MCP first"
+      ]
+    },
+    {
+      "id": "read-only-by-default",
+      "term": "Read-only by default",
+      "definition": "Every tool is classed read, write or destructive. Write and destructive calls are blocked until the operator turns on allow writes for that connection. Unknown tools count as write.",
+      "aliases": [
+        "allow writes off"
+      ]
+    },
+    {
+      "id": "role-gated-tool-list",
+      "term": "Role-gated tool list",
+      "definition": "The server lists only the tools the calling identity's admin roles allow. A short list usually means missing roles, not a broken server (pingone-mcp skill). The same URL shows different tools to a viewer and an admin.",
+      "aliases": [
+        "short tool list"
+      ]
+    },
+    {
+      "id": "worker-application",
+      "term": "Worker application",
+      "definition": "A PingOne application with admin roles, used by unattended callers such as scripts and services. Give it only the roles the caller needs: an overprivileged worker is as risky as an overprivileged REST credential.",
+      "aliases": [
+        "worker app"
+      ]
+    }
+  ],
+  "sources": [],
+  "cards": [
+    {
+      "id": "audit",
+      "label": "Audit log",
+      "description": "Every call, allowed or blocked, redacted.",
+      "group": "reference",
+      "terms": [
+        "audit-log"
+      ],
+      "action": {
+        "type": "route",
+        "href": "/#/audit"
+      }
+    },
+    {
+      "id": "connections",
+      "label": "Connect to a server",
+      "description": "Mock: the mock demo with a viewer/admin role switch. Live (owner opt-in): worker or interactive PingOne, or a custom MCP server.",
+      "group": "setup",
+      "terms": [
+        "hosted-mcp-server",
+        "admin-plane",
+        "worker-application",
+        "client-credentials",
+        "authorization-code-pkce"
+      ],
+      "action": {
+        "type": "route",
+        "href": "/#/connections"
+      }
+    },
+    {
+      "id": "diagram",
+      "label": "Diagram",
+      "description": "Client, gate, token source and server. Movable boxes, Simulate, Reset, speed.",
+      "group": "concept",
+      "action": {
+        "type": "route",
+        "href": "/#/diagram"
+      }
+    },
+    {
+      "id": "mcp-first",
+      "label": "MCP first, Management API second",
+      "description": "When to use the hosted MCP tools and when to fall back to the REST API.",
+      "group": "concept",
+      "terms": [
+        "mcp-first-rule"
+      ],
+      "action": {
+        "type": "route",
+        "href": "/#/mcp-first"
+      }
+    },
+    {
+      "id": "second-look",
+      "label": "A write needs a second look",
+      "description": "Story: writes are blocked, then confirmed on the exact arguments; destructive calls need the name typed.",
+      "group": "concept",
+      "terms": [
+        "read-only-by-default",
+        "confirm-gate",
+        "audit-log"
+      ],
+      "story": "S02",
+      "action": {
+        "type": "route",
+        "href": "/#/stories"
+      }
+    },
+    {
+      "id": "short-list",
+      "label": "Why a short tool list",
+      "description": "Story: the list is gated by roles. Switch the mock demo from viewer to admin and watch it grow.",
+      "group": "concept",
+      "terms": [
+        "role-gated-tool-list"
+      ],
+      "story": "S01",
+      "action": {
+        "type": "route",
+        "href": "/#/stories"
+      }
+    },
+    {
+      "id": "tools",
+      "label": "Tools and safety classes",
+      "description": "Every tool with a read, write or destructive badge and why; scan the list for poisoned metadata.",
+      "group": "try-it",
+      "terms": [
+        "role-gated-tool-list",
+        "read-only-by-default"
+      ],
+      "action": {
+        "type": "route",
+        "href": "/#/tools"
+      }
+    }
+  ],
+  "diagrams": [
+    {
+      "id": "connection-path",
+      "label": "Client, gate, token source, server",
+      "href": "/#/diagram"
+    }
+  ],
+  "stories": [
+    {
+      "id": "S01",
+      "title": "Why do I only see twelve tools?",
+      "say": "A short tool list is a roles question first, a server question last.",
+      "file": "web/src/data/stories/S01-short-tool-list.json"
+    },
+    {
+      "id": "S02",
+      "title": "A write needs a second look",
+      "say": "Nothing writes until someone has looked at exactly what it will write.",
+      "file": "web/src/data/stories/S02-write-needs-second-look.json"
+    }
+  ]
+}

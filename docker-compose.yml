@@ -1,0 +1,39 @@
+# OrbStack:  HOST_PORT=5201 docker compose up --build -d   ->  http://127.0.0.1:5201/api/health   (HOST_PORT stays in 5201-5249)
+# The server binds 0.0.0.0 INSIDE the container (P1MCP_BIND is the opt-in), but the port is published on loopback only.
+# Do not change the 127.0.0.1 below: Live can act on a PingOne tenant's admin plane (a test pins it).
+# Mock is the default and needs nothing. Live stays refused unless you start it with PINGONE_MCP_INSPECTOR_MODE=live in your shell.
+# Interactive sign-in (Live only): register the redirect URI http://localhost:<HOST_PORT>/api/oauth/callback on your OAuth application
+# (the port you PUBLISH). The app compares the redirect URI's port with the Host header's port.
+name: pingone-mcp-inspector-lab
+
+services:
+  pingone-mcp-inspector-lab:
+    build: .
+    ports:
+      - "127.0.0.1:${HOST_PORT:-5201}:5201"
+    environment:
+      SHELF_URL: ${SHELF_URL:-http://127.0.0.1:4400}
+      PORT: "5201"
+      P1MCP_BIND: 0.0.0.0
+      P1MCP_CONTAINER: "1"
+      LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-pingone-mcp-inspector.local.ping-devops.com}
+      P1MCP_DATA_DIR: /data
+      PINGONE_MCP_INSPECTOR_MODE: ${PINGONE_MCP_INSPECTOR_MODE:-mock}
+    volumes:
+      - p1mcp-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      # Liveness plus "not broken": needs-setup (no connection yet) is healthy.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5201/api/health').then(r=>r.json()).then(j=>process.exit(j.schema==='demo-health/1'&&j.state!=='broken'?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
+
+volumes:
+  p1mcp-data:
