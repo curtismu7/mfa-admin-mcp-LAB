@@ -271,7 +271,8 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   app.post('/api/connections/:id/login/start', h((req, res, conn) => {
     let u; try { u = new URL(conn.redirectUri); } catch { u = null; }
     const hostPort = browserPort(req);
-    if (!u || u.protocol !== 'http:' || !isLoopbackHost(u.hostname) || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
+    const schemeOk = u && ((u.protocol === 'http:' && isLoopbackHost(u.hostname)) || u.protocol === 'https:');
+    if (!u || !schemeOk || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
       return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be http://localhost:${hostPort}/api/oauth/callback (or /callback), exactly as registered on your OAuth application.` });
     }
     res.json({ authorizeUrl: auth.startLogin(conn).authorizeUrl });

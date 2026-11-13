@@ -56,7 +56,9 @@ export function createStore({ dir }) {
         rec.redirectUri = str(b.redirectUri, 300);
         if (!rec.redirectUri) throw new Error('redirectUri is required for interactive auth (the loopback URI registered on your OAuth application)');
         let ru; try { ru = new URL(rec.redirectUri); } catch { ru = null; }
-        if (!ru || ru.protocol !== 'http:' || !isLoopbackHost(ru.hostname)) throw new Error('redirectUri must be an http loopback URI such as http://localhost:7815/api/oauth/callback');
+        // http loopback (direct/proxy port) or https (the lab-proxy has a real certificate; PingOne requires https for non-localhost hosts)
+        const okCb = ru && ((ru.protocol === 'http:' && isLoopbackHost(ru.hostname)) || ru.protocol === 'https:');
+        if (!okCb) throw new Error('redirectUri must be an http loopback URI (http://localhost:7815/api/oauth/callback) or an https URI');
       }
     } else {
       rec.url = cleanUrl(b.url);
