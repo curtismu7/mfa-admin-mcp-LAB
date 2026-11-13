@@ -38,10 +38,12 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
     const envId = String(req.body?.envId || '');
     if (!/^[0-9a-f-]{36}$/.test(envId)) return res.status(400).json({ error: 'bad_request', message: 'envId must be a PingOne environment id (a UUID)' });
     const api = `https://api.pingone.${region}/v1/environments/${envId}`;
+    // Unauthenticated reachability probe: OIDC discovery needs no token (GET /environments does).
     let env;
-    try { env = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(api, { signal: AbortSignal.timeout(10_000) }))); } catch { env = { status: 0, b: null }; }
-    if (env.status !== 200) return res.json({ ok: false, stage: 'environment', message: env.status === 404 ? 'No such environment (or the region is wrong).' : `The environment endpoint answered ${env.status}. Check the region and the id.` });
-    const name = env.b?.name || 'the environment';
+    const discovery = `https://auth.pingone.${region}/${envId}/as/.well-known/openid-configuration`;
+    try { env = await withPermit(`auth.pingone.${region}`, async () => j(await fetchImpl(discovery, { signal: AbortSignal.timeout(10_000) }))); } catch { env = { status: 0, b: null }; }
+    if (env.status !== 200) return res.json({ ok: false, stage: 'environment', message: env.status === 404 ? 'No such environment (or the region is wrong).' : env.status === 0 ? 'The environment endpoint was unreachable (network).' : `The environment endpoint answered ${env.status}. Check the region and the id.` });
+    const name = 'the environment';
     // The callback this lab will demand, on the browser's own origin:
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim();
     const port = host.split(':').pop();
