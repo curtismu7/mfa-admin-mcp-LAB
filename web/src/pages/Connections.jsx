@@ -141,12 +141,12 @@ export default function Connections({ mode, conns, activeId, onSelect, reload, t
       clientId: kind === "worker" ? "viewer-demo" : "admin-demo", ...(kind === "worker" ? { clientSecret: "demo-secret" } : { redirectUri: redirectUriFor() }) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { say(r.json?.message || "Could not add the demo."); return; }
-    say("Mock demo added."); await reload(); onSelect(r.json.id); if (kind === "worker") runTest(r.json.id);
+    say("Mock demo added."); await reload(); onSelect(r.json.id); if (kind === "worker") runTest(r.json.id, { modal: false });
   }
   async function preset(id, name) {
     const r = await api.post(`/api/presets/${id}`);
     if (!r.ok) { say(r.json?.message || `Could not add ${name}.`); return; }
-    say(`${name} added.`); await reload(); onSelect(r.json.id); runTest(r.json.id);
+    say(`${name} added.`); await reload(); onSelect(r.json.id); runTest(r.json.id, { modal: false });
   }
   return (
     <>
