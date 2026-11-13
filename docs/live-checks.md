@@ -58,3 +58,11 @@ Anything surprising:
 
 ## Result of item 2 (2026-10-21, one tenant, by the owner's standalone worker)
 A worker (client_credentials) token IS accepted by the hosted MCP server: 82 tools listed. That tenant answered only on the `mcp-host` shape (`https://mcp.pingone.<region>/admin/<env>/mcp`); the `api` shape returned 400 "must be sent to its custom domain". One tenant only: not a general guarantee. The one-click PingOne preset defaults to `mcp-host` (PINGONE_ENDPOINT_STYLE overrides).
+
+## Result of item 4 (2026-11-13, one tenant, by the owner's session)
+Interactive sign-in (authorization code + PKCE) through the lab proxy is wired and verified up to the authorize hop:
+- The hosted MCP endpoint shape that answers is `mcp-host` (`https://mcp.pingone.<region>/admin/<env>/mcp`) — consistent with the 2026-10-21 result above.
+- The interactive connection's `login/start` returns a real `auth.pingone.com` authorize URL (PKCE S256, state, nonce) with `redirect_uri=http://localhost:8443/api/oauth/callback`; the browser's port is taken from `X-Forwarded-Host` behind the shared lab-proxy.
+- The Setup card's `check` reaches the real environment (unauthenticated OIDC discovery) and `apply` reuses an existing app that already carries the callback (`created: false`, app name returned, secret never echoed).
+- Worker (`client_credentials`) tokens against the Management API work for setup (app create/update); the hosted-MCP worker question stays as measured on 2026-10-21 (accepted on that tenant, 82 tools).
+- NOT yet run: the actual browser sign-in and a real `getMfaSettings` call (owner-run; needs the owner's credentials).

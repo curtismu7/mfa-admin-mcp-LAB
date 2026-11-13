@@ -1,6 +1,9 @@
 // The setup router: check (no credential), apply (worker token minted once, never stored),
 // and the connection it hands back is a valid interactive one.
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { startApp, tmpDir } from './helpers.js';
 import { installNetguard } from './netguard.js';
@@ -79,6 +82,33 @@ test('apply: a worker the token endpoint refuses answers 401 without echoing the
     const r = await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID, workerClientId: 'w', workerClientSecret: 'sentinel-secret-abc' });
     assert.equal(r.status, 401);
     assert.ok(!r.text.includes('sentinel-secret-abc'));
+  } finally { await t.close(); }
+});
+
+test('worker.env: check and apply read region, env id and the worker pair from MFAADM_WORKER_ENV_FILE; the secret is never echoed', async () => {
+  const dir = tmpDir(); const file = path.join(dir, 'worker.env');
+  fs.writeFileSync(file, '# mfa-admin-mcp setup worker\nPINGONE_ENV_ID=' + ENV_ID + '\nPINGONE_REGION=com\nPINGONE_CLIENT_ID=env-worker\nPINGONE_CLIENT_SECRET=env-secret-xyz\n', { mode: 0o600 });
+  const t = await startApp({ env: { MFAADM_WORKER_ENV_FILE: file }, fetchImpl: stubFetch, dir: tmpDir() });
+  try {
+    // check with NO body at all: everything comes from the file
+    const c = await t.call('POST', '/api/setup/check', {});
+    assert.equal(c.status, 200, c.text); assert.equal(c.json.ok, true); assert.equal(c.json.workerEnv, true);
+    // apply with no body: same
+    fetched.length = 0;
+    const r = await t.call('POST', '/api/setup/apply', {});
+    assert.equal(r.status, 200, r.text);
+    const mint = fetched.find((f) => f.url.endsWith('/as/token'));
+    assert.ok(mint.auth.includes(Buffer.from('env-worker:env-secret-xyz').toString('base64')), 'the file pair minted the token');
+    assert.ok(!r.text.includes('env-secret-xyz'), 'the secret is never echoed');
+  } finally { await t.close(); }
+});
+
+test('worker.env missing: apply says where to put it, in one sentence, and echoes no secret', async () => {
+  const t = await startApp({ env: { MFAADM_WORKER_ENV_FILE: path.join(tmpDir(), 'absent.env') }, fetchImpl: stubFetch, dir: tmpDir() });
+  try {
+    const r = await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID });
+    assert.equal(r.status, 400);
+    assert.match(r.json.message, /worker\.env/);
   } finally { await t.close(); }
 });
 
