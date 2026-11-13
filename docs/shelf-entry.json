@@ -10,7 +10,7 @@
       "healthPath": "/api/health",
       "composeFile": "mfa-admin-mcp-LAB/docker-compose.yml",
       "composeOverlays": [],
-      "notes": "Host-run: npm ci && npm run build && npm start (port 7815; npm run doctor checks it). Or: HOST_PORT=7815 docker compose up --build -d (published on 127.0.0.1 only). Mock mode needs no setup; Live is refused until the owner sets MFA_ADMIN_MCP_MODE=live. Not tested against a real tenant. The composeFile is relative to the folder the demo repos sit in."
+      "notes": "Host-run: npm ci && npm run build && npm start (port 7815; npm run doctor checks it). Or: HOST_PORT=7815 docker compose up --build -d (published on 127.0.0.1 only). Mock mode needs no setup; Live is available from the header toggle (a non-loopback bind without the container opt-in refuses it). Not tested against a real tenant. The composeFile is relative to the folder the demo repos sit in."
     }
   ]
 }

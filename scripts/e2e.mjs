@@ -31,11 +31,11 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pingone-mcp-lab-e2e-'));
 // STANDALONE_ENV points at a file that does not exist, so the run never reads the real shared settings file. Live is opted in for the
 // first server only (the hostile-stub scan needs a saved Live connection to a loopback stub); the second server has no opt-in.
 const missingEnv = path.join(dataDir, 'no-such.env');
-const start = (p, extra, sub) => spawn(process.execPath, ['--import', './scripts/e2e-guard.mjs', 'server/src/index.js'], { cwd: root, env: { ...process.env, STANDALONE_ENV: missingEnv, PORT: String(p), MFAADM_DATA_DIR: path.join(dataDir, sub), E2E_GUARD_FILE: path.join(dataDir, `guard-${sub}.json`), ...extra }, stdio: 'ignore' });
+const start = (p, extra, sub) => spawn(process.execPath, ['--import', './scripts/e2e-guard.mjs', 'server/src/index.js'], { cwd: root, env: { ...process.env, STANDALONE_ENV: missingEnv, PORT: String(p), MFAADM_DATA_DIR: path.join(dataDir, sub), E2E_GUARD_FILE: path.join(dataDir, `guard-${sub}.json`), ...extra }, stdio: 'ignore' }); // the guard file also marks the e2e harness, so ports outside the app's range are allowed
 delete process.env.MFA_ADMIN_MCP_MODE;
 const server = start(port, { MFA_ADMIN_MCP_MODE: 'live' }, 'data');
 const refusedPort = port + 1;
-const refusedServer = start(refusedPort, {}, 'data-refused');
+const refusedServer = start(refusedPort, { MFAADM_BIND: '0.0.0.0' }, 'data-refused'); // refuses Live via the loopback-bind guard (no env opt-in any more)
 for (const p of [port, refusedPort]) for (let i = 0; i < 40; i++) { try { if ((await fetch(`http://localhost:${p}/api/health`)).ok) break; } catch { /* not up yet */ } await sleep(250); }
 fs.rmSync(shots, { recursive: true, force: true });
 fs.mkdirSync(shots, { recursive: true });
@@ -273,7 +273,7 @@ try {
   await go('connections');
   check(await page.locator('[data-testid="conn-card"]').count() >= 1, 'Reset kept the saved connections');
 
-  // a second server without the Live opt-in: the Live (Real) button is disabled with the reason, and the page stays in Mock
+  // a second server bound non-loopback: the Live (Real) button is disabled with the reason, and the page stays in Mock
   const refusedPage = await ctx.newPage();
   const refusedBase = `http://localhost:${refusedPort}`;
   await refusedPage.goto(`${refusedBase}/#/connections`);
@@ -283,7 +283,7 @@ try {
   await refusedPage.getByTestId('mode-select').selectOption('real').catch(() => {});
   await refusedPage.waitForTimeout(500);
   const refusedStaysMock = (await refusedPage.getByTestId('mode').innerText()) === 'Mode: mock';
-  check(refusedDisabled && refusedTitle.includes('owner-opt-in') && refusedStaysMock, 'without the opt-in, Real (Live) is disabled with the reason and the page stays in Mock');
+  check(refusedDisabled && refusedTitle.includes('loopback-bind') && refusedStaysMock, 'bound non-loopback, Real (Live) is disabled with the reason and the page stays in Mock');
   const refusedInfo = await (await fetch(`${refusedBase}/api/info`)).json();
   const liveTry = await fetch(`${refusedBase}/api/connections`, { method: 'POST', headers: { 'content-type': 'application/json', origin: refusedBase }, body: JSON.stringify({ kind: 'custom', url: 'http://127.0.0.1:9/mcp' }) });
   check(refusedInfo.live.available === false && liveTry.status === 403, 'the API agrees: /api/info says Live is unavailable and a Live connection is refused (403)');

@@ -1,7 +1,7 @@
 # OrbStack:  HOST_PORT=7815 docker compose up --build -d   ->  http://127.0.0.1:7815/api/health   (one port: 7815, from the packed range)
 # The server binds 0.0.0.0 INSIDE the container (MFAADM_BIND is the opt-in), but the port is published on loopback only.
 # Do not change the 127.0.0.1 below: Live can act on a PingOne tenant's admin plane (a test pins it).
-# Mock is the default and needs nothing. Live stays refused unless you start it with MFA_ADMIN_MCP_MODE=live in your shell.
+# Mock is the default and needs nothing. Live is available from the header toggle (the container bind passes the guard).
 # Interactive sign-in (Live only): register the redirect URI http://localhost:<HOST_PORT>/api/oauth/callback on your OAuth application
 # (the port you PUBLISH). The app compares the redirect URI's port with the Host header's port.
 name: mfa-admin-mcp-lab

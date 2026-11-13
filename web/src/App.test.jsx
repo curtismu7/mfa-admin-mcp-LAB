@@ -104,7 +104,7 @@ test("Live is refused when the server says a guard fails: the page stays in Mock
   await screen.findByTestId("banner");
   await waitFor(() => expect(api.calls.some((c) => c.url === "/api/info")).toBe(true));
   expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(true); // Real is unavailable: the option is off
-  expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').getAttribute("title")).toMatch(/owner-opt-in/); // with the how-to tooltip
+  expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').getAttribute("title")).toMatch(/loopback-bind/); // with the how-to tooltip
   expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
   expect(screen.getByTestId("banner")).toHaveTextContent(/^MOCK mode/);
   expect(api.calls.filter((c) => c.method === "POST" && !/\/test$/.test(c.url))).toEqual([]); // only the mock demo's own test, no Live call

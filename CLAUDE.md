@@ -22,7 +22,7 @@ Docker (OrbStack, never Docker Desktop): `HOST_PORT=7815 docker compose up --bui
 
 ## Rules that bite here
 
-- **Mock / Live toggle in the header on every page**, the mode shown (`Mode: mock|live`) and the banner saying the same mode, presenter mode included. The page always opens in Mock (nothing about the mode is remembered). **Live is refused** unless `MFA_ADMIN_MCP_MODE=live` (shared settings file or environment) and the bind is loopback (a non-loopback `MFAADM_BIND` counts only with the image's `MFAADM_CONTAINER=1`): `server/src/config.js` guards, `GET /api/info`, 403 `live_refused` in `app.js` on every network route for a non-mock connection. Do not add a path that makes Live work without the owner. Never read a bare `MODE`, never `process.env.MODE`.
+- **Mock / Live toggle in the header on every page**, the mode shown (`Mode: mock|live`) and the banner saying the same mode, presenter mode included. The page always opens in Mock (nothing about the mode is remembered). **Live is refused** unless the bind is loopback (a non-loopback `MFAADM_BIND` counts only with the image's `MFAADM_CONTAINER=1`; owner decision 2026-11-13: no env opt-in, the Real button works out of the box): `server/src/config.js` guards, `GET /api/info`, 403 `live_refused` in `app.js` on every network route for a non-mock connection. Do not add a path that lets Live bind wide. Never read a bare `MODE`, never `process.env.MODE`.
 - **Zero outbound in Mock.** `server/src/netguard.js` (installed by `index.js`) refuses every non-loopback socket, DNS lookup, fetch, UDP send and UDP connect; a Live operation holds a permit for the hosts of its own connection only (`urls.js` `liveHosts`, `withPermits` in `app.js`). Tests run under the recorder in `server/test/netguard.js` and assert zero attempts.
 - **Secrets are write-only.** Client secrets, tokens and the custom header value are never returned, logged or audited (`store.js` `publicView`, `redact.js`). Reset keeps connections but turns writes off.
 - **Settings.** `~/Development/.env` (or `STANDALONE_ENV`) is READ ONLY, through `util.parseEnv`, three keys only (`settings.js`). No per-app `.env` is loaded. Admin and worker credentials never go in it.
@@ -41,7 +41,7 @@ Docker (OrbStack, never Docker Desktop): `HOST_PORT=7815 docker compose up --bui
 - `server/test/api.test.js`, `hostile.test.js`, `auth.test.js`, `mcpClient.test.js`, `scan.test.js`: the gate, secrets never returned, hostile servers, OAuth, the client, the scan.
 - `server/test/reset.test.js`: Reset clears run state and keeps connections.
 - `web/src/App.test.jsx`: the header toggle on every page, the banner, the refusal message, Reset, inert server text, presenter mode.
-- `scripts/repo.test.mjs`: README standard, CSS standard, CI, no k8s/MODE/EC keygen, Live stays an opt-in. `scripts/compose.test.mjs`: loopback-only container publish. `scripts/docs.test.mjs`: docs match the code. `scripts/shelf-entry.test.mjs`, `content-pack.test.mjs`, `talk-track.test.mjs`, `hooks.test.mjs`.
+- `scripts/repo.test.mjs`: README standard, CSS standard, CI, no k8s/MODE/EC keygen, Live gated by the bind only. `scripts/compose.test.mjs`: loopback-only container publish. `scripts/docs.test.mjs`: docs match the code. `scripts/shelf-entry.test.mjs`, `content-pack.test.mjs`, `talk-track.test.mjs`, `hooks.test.mjs`.
 
 ## Shelf and content pack
 

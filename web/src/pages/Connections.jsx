@@ -159,7 +159,7 @@ export default function Connections({ mode, conns, activeId, onSelect, reload, t
             <button type="button" className="primary" onClick={() => demo("worker")}>Add mock demo (worker, viewer/admin switch)</button>
             <button type="button" onClick={() => demo("interactive")}>Add mock demo with sign-in (interactive)</button>
           </div>
-          <p className="hint">To connect a real PingOne tenant or MCP server, press Live in the header. Live is an owner opt-in and is refused until it is set up (see the README, Mock and live modes).</p>
+          <p className="hint">To connect a real PingOne tenant or MCP server, press Live in the header and add a connection (see the README, Mock and live modes).</p>
         </section>
       )}
       {mode === "live" && (

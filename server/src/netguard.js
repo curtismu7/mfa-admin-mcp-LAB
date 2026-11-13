@@ -1,5 +1,5 @@
 // Runtime netguard: zero real outbound by default. Every non-loopback socket, DNS lookup, fetch, UDP send and UDP connect is refused and recorded.
-// Mock mode is in-process and never needs the network. Live (owner opt-in) asks for a short-lived permit for each host the saved
+// Mock mode is in-process and never needs the network. Live asks for a short-lived permit for each host the saved
 // connection can reach (permit(host) -> release()): the PingOne hosts for the connection's region (token host and MCP host) or the one
 // server URL the operator typed, and nothing else, and only while that operation is in flight. Adapted from intent-par-inspector
 // server/src/netguard.js (same author).
