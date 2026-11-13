@@ -27,9 +27,10 @@ async function stubFetch(url, init = {}) {
   }
   if (url.includes('/applications') && (init.method || 'GET') === 'PUT') {
     const body = JSON.parse(init.body);
-    return Response.json({ id: 'existing-app', name: 'Existing sign-in app', redirectUris: body.redirectUris });
+    if (!body.grantTypes) return Response.json({ code: 'INVALID_DATA', details: [{ message: 'grantTypes nullified' }] }, { status: 400 });
+    return Response.json({ id: 'existing-app', name: 'Existing sign-in app', grantTypes: body.grantTypes, responseTypes: body.responseTypes, redirectUris: body.redirectUris });
   }
-  if (url.includes('/applications')) return Response.json({ _embedded: { applications: [{ id: 'existing-app', name: 'Existing sign-in app', type: 'WEB_APP', redirectUris: ['https://elsewhere/callback'] }] } });
+  if (url.includes('/applications')) return Response.json({ _embedded: { applications: [{ id: 'existing-app', name: 'Existing sign-in app', type: 'WEB_APP', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], redirectUris: ['https://elsewhere/callback'] }] } });
   if (url.includes('/api.pingone.eu/') || url.includes('auth.pingone.eu/')) return new Response('not found', { status: 404 });
   if (url.includes('/.well-known/openid-configuration')) return Response.json({ issuer: 'stub' });
   if (url.includes(`/environments/${ENV_ID}`) && !url.includes('/applications')) return Response.json({ id: ENV_ID, name: 'Stub environment' });
@@ -109,6 +110,18 @@ test('worker.env missing: apply says where to put it, in one sentence, and echoe
     const r = await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID });
     assert.equal(r.status, 400);
     assert.match(r.json.message, /worker\.env/);
+  } finally { await t.close(); }
+});
+
+test('apply: created apps carry the code+PKCE grants, and PUT-backs never drop them', async () => {
+  fetched.length = 0;
+  const t = await startApp({ env: {}, fetchImpl: stubFetch, dir: tmpDir() });
+  try {
+    await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID, workerClientId: 'w', workerClientSecret: 's' });
+    const post = fetched.find((f) => f.method === 'POST' && f.url.includes('/applications'));
+    const body = JSON.parse(post.body);
+    assert.ok(body.grantTypes.includes('AUTHORIZATION_CODE') && body.grantTypes.includes('REFRESH_TOKEN'));
+    assert.deepEqual(body.responseTypes, ['CODE']);
   } finally { await t.close(); }
 });
 

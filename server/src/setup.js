@@ -42,7 +42,10 @@ const j = (r) => r.json().then((b) => ({ status: r.status, b }), () => ({ status
 // nullify fields like refreshTokenDuration, so PUT-backs carry the GET's own
 // writable scalars and only replace redirectUris).
 const writable = (app) => {
-  const skip = new Set(['id', 'environment', '_links', 'createdAt', 'updatedAt', 'grantTypes', 'responseTypes', 'postLogoutRedirectUris', 'oidcOptions', 'redirectUris', 'testClient', 'samlOptions', 'wsFedOptions', 'populations', 'billablePopulations']);
+  // grantTypes and responseTypes MUST ride along: skipping them nullifies them on the server
+  // (measured 2026-11-13: an app without its grants refuses response_type=code with
+  // 'unsupported_response_type'). Only truly read-only/other-protocol fields are skipped.
+  const skip = new Set(['id', 'environment', '_links', 'createdAt', 'updatedAt', 'oidcOptions', 'redirectUris', 'testClient', 'samlOptions', 'wsFedOptions', 'populations', 'billablePopulations']);
   const out = {};
   for (const [k, v] of Object.entries(app)) if (!skip.has(k)) out[k] = v;
   return out;
