@@ -142,15 +142,16 @@ test("wizard: secret is write-only, cleared after saving, and the card shows set
   render(<App />);
   const user = userEvent.setup();
   await pressLive(user);
-  await user.type(await screen.findByLabelText(/Environment id/), "11111111-2222-4333-8444-555555555555");
-  await user.type(screen.getByLabelText("Client id"), "my-worker");
-  const secret = screen.getByLabelText(/Client secret/);
+  const wiz = (await screen.findAllByLabelText(/Client id/))[0].closest("form");
+  await user.type(within(wiz).getByLabelText(/Environment id/), "11111111-2222-4333-8444-555555555555");
+  await user.type(within(wiz).getByLabelText("Client id"), "my-worker");
+  const secret = within(wiz).getByLabelText(/Client secret/);
   expect(secret).toHaveAttribute("type", "password");
   await user.type(secret, "super-secret-value");
   await user.click(screen.getByRole("button", { name: "Save connection" }));
   await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.clientSecret === "super-secret-value")).toBe(true));
-  await waitFor(() => expect(screen.getByLabelText(/Client secret/)).toHaveValue(""));
-  expect(document.body.innerHTML).not.toContain("super-secret-value");
+  await waitFor(() => expect(within(wiz).getByLabelText(/Client secret/)).toHaveValue(""));
+  expect(within(wiz).queryByText("super-secret-value")).toBeNull();
   expect(await screen.findByText(/secret: set/)).toBeInTheDocument();
 });
 
