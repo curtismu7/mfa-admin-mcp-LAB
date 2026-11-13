@@ -10,7 +10,7 @@ npm test             # server (node --test test/*.test.js) + web (vitest) + scri
 npm run build        # builds web/dist, served by the server itself
 npm start            # http://127.0.0.1:7815/  (PORT to change)
 npm run dev          # API with --watch, Vite on 5202
-npm run doctor       # node 26, mode, data dir, bind, port range, netguard self-test, free port (PORT=7816 to dodge a running copy)
+npm run doctor       # node 26, mode, data dir, bind, port range, netguard self-test, free port (PORT=7815 to dodge a running copy)
 npm run reset        # POST /api/reset on the running app
 npm run smoke        # the mock demo end to end against the running app (removes what it made)
 npm run e2e          # headless Chromium on 5231; build first (E2E_CHROMIUM=<binary> if the Playwright build is missing)
