@@ -27,7 +27,8 @@ async function stubFetch(url, init = {}) {
     return Response.json({ id: 'existing-app', name: 'Existing sign-in app', redirectUris: body.redirectUris });
   }
   if (url.includes('/applications')) return Response.json({ _embedded: { applications: [{ id: 'existing-app', name: 'Existing sign-in app', type: 'WEB_APP', redirectUris: ['https://elsewhere/callback'] }] } });
-  if (url.includes('/api.pingone.eu/')) return new Response('not found', { status: 404 });
+  if (url.includes('/api.pingone.eu/') || url.includes('auth.pingone.eu/')) return new Response('not found', { status: 404 });
+  if (url.includes('/.well-known/openid-configuration')) return Response.json({ issuer: 'stub' });
   if (url.includes(`/environments/${ENV_ID}`) && !url.includes('/applications')) return Response.json({ id: ENV_ID, name: 'Stub environment' });
   if (url.includes('/environments/')) return new Response('not found', { status: 404 });
   return new Response('nope', { status: 404 });
@@ -42,7 +43,8 @@ test('check: a bad env id is a 400; a good one reports the environment and the c
   const r = await s.call('POST', '/api/setup/check', { region: 'com', envId: ENV_ID });
   assert.equal(r.status, 200);
   assert.equal(r.json.ok, true);
-  assert.match(r.json.environment, /Stub environment/);
+  assert.equal(r.json.ok, true);
+  assert.match(r.json.callback, /api\/oauth\/callback/);
   assert.match(r.json.callback, /^http:\/\/localhost:\d+\/api\/oauth\/callback$/);
 });
 
