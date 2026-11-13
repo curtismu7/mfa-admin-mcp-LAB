@@ -143,7 +143,16 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   });
   // One-click presets. 'pingone' reads the worker from a LOCAL file outside the repo (MFAADM_WORKER_ENV_FILE), never from the repo.
   const PRESETS = {
-    banking: () => ({ kind: 'custom', label: 'Banking MCP (local)', url: env.MFAADM_BANKING_URL || 'http://localhost:9901/mcp' }),
+    banking: () => {
+      const url = env.MFAADM_BANKING_URL || 'http://localhost:8081/mcp';
+      // The family banking MCP (mcp-resource-server-LAB) is bearer-token only. With no JWKS source
+      // configured it accepts a well-formed local test token (STRICT_AUTH=false default), so the
+      // preset mints one itself: aud = its resource, scope = banking:read. A real deployment sets
+      // MFAADM_BANKING_TOKEN and this minting path is skipped.
+      const h = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+      const token = env.MFAADM_BANKING_TOKEN || `${h({ alg: 'none', typ: 'JWT' })}.${h({ iss: 'mfa-admin-mcp-lab-preset', aud: env.MFAADM_BANKING_AUD || 'mcp-invest.ping.demo', scope: 'banking:read', sub: 'lab-preset', exp: Math.floor(Date.now() / 1000) + 86400 })}.`;
+      return { kind: 'custom', label: 'Banking MCP (local)', url, token, authHeader: 'Authorization' };
+    },
     opensearch: () => ({ kind: 'custom', label: 'OpenSearch MCP (local)', url: env.MFAADM_OPENSEARCH_URL || 'http://localhost:9900/mcp' }),
     pingone: () => {
       const file = env.MFAADM_WORKER_ENV_FILE || path.join(os.homedir(), '.config', 'mfa-admin-mcp', 'worker.env');
