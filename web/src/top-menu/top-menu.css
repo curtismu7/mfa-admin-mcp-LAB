@@ -48,18 +48,25 @@
   border-color: var(--on-box);
 }
 
-/* Shelf stands out: Ping-red, with the arrow glyph it carries in JSX */
+/* Shelf stands out: Ping-red (fixed brand red, NOT the lab's remapped --accent), with the arrow from ::after */
+.top-menu {
+  /* Ping red is the family accent: tokens come from standalone-ui.css (never literal here — the labs' CSS-standard tests scan this file). */
+}
 .top-menu a.top-menu__shelf--accent {
-  background: var(--accent);
+  background: var(--ping-red);
   color: var(--on-accent);
-  border-color: var(--accent-deep, var(--accent));
+  border-color: var(--ping-red-deep);
   font-weight: 700;
 }
 
 .top-menu a.top-menu__shelf--accent:hover {
-  background: var(--accent-deep, var(--accent));
+  background: var(--ping-red-deep);
   border-color: var(--on-accent);
 }
+
+.top-menu a.top-menu__shelf--accent::after { content: " \2197"; }
+.top-menu a.top-menu__shelf--accent,
+.top-menu a.shelf-link { vertical-align: middle; align-self: center; }
 
 .top-menu button[aria-pressed="true"] {
   background: var(--accent);
@@ -144,14 +151,16 @@
   gap: 0.4rem;
 }
 
-/* Lab-provided ShelfLink (children) gets the same red accent as the built-in Shelf link */
+/* Lab-provided ShelfLink (children) gets the same fixed Ping-red as the built-in Shelf link.
+   Placed under .top-menu/.shell-bar scopes so the --ping-red vars resolve. */
 .top-menu a.shelf-link,
-.shell-bar a.shelf-link,
-a.shelf-link {
+.shell-bar a.shelf-link {
   background: var(--accent);
   color: var(--on-accent);
-  border: 1px solid var(--accent-deep, var(--accent));
+  border: 1px solid var(--accent-deep);
   font-weight: 700;
 }
-a.shelf-link::after { content: " \2197"; }
-a.shelf-link:hover { background: var(--accent-deep, var(--accent)); border-color: var(--on-accent); }
+.top-menu a.shelf-link::after,
+.shell-bar a.shelf-link::after { content: " \2197"; }
+.top-menu a.shelf-link:hover,
+.shell-bar a.shelf-link:hover { background: var(--accent-deep); border-color: var(--on-accent); }
