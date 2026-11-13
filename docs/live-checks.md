@@ -66,3 +66,8 @@ Interactive sign-in (authorization code + PKCE) through the lab proxy is wired a
 - The Setup card's `check` reaches the real environment (unauthenticated OIDC discovery) and `apply` reuses an existing app that already carries the callback (`created: false`, app name returned, secret never echoed).
 - Worker (`client_credentials`) tokens against the Management API work for setup (app create/update); the hosted-MCP worker question stays as measured on 2026-10-21 (accepted on that tenant, 82 tools).
 - NOT yet run: the actual browser sign-in and a real `getMfaSettings` call (owner-run; needs the owner's credentials).
+
+## Result of item 5 (2026-11-13, one tenant, by the owner's session)
+Two measured PingOne behaviours that bit during interactive sign-in setup:
+1. A full PUT that omits `grantTypes`/`responseTypes` NULLIFIES them server-side; the app then refuses `response_type=code` with `unsupported_response_type`. Fixed in the lab's setup route (only truly read-only fields are skipped); the family admin app was restored by hand.
+2. An app with `accessControl: { type: 'ANY_GROUP', groups: [...] }` refuses sign-in with `access_denied: User does not have appropriate group memberships` for anyone outside the group. For the setup flow the app's access control is left unset (everyone) — role gating happens via the signed-in user's admin roles at the MCP server, not at the app.
