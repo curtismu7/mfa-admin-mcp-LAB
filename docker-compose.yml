@@ -19,9 +19,13 @@ services:
       MFAADM_CONTAINER: "1"
       LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-mfa-admin-mcp.local.ping-devops.com}
       MFAADM_DATA_DIR: /data
+      MFAADM_WORKER_ENV_FILE: /config/worker.env
       MFA_ADMIN_MCP_MODE: ${MFA_ADMIN_MCP_MODE:-mock}
     volumes:
       - p1mcp-data:/data
+      # read-only: the Management worker the setup card and the PingOne preset read
+      # (PINGONE_CLIENT_ID/SECRET, optional PINGONE_ENV_ID/REGION); never written.
+      - ${MFAADM_WORKER_ENV_FILE:-~/.config/mfa-admin-mcp/worker.env}:/config/worker.env:ro
     read_only: true
     tmpfs:
       - /tmp
