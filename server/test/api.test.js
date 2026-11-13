@@ -231,7 +231,9 @@ test('preset defaults: neutral labels, and no port the rulebook reserves for oth
       assert.doesNotMatch(r.label, /AI-DEMO/i, id);
       assert.doesNotMatch(r.url, /:(8080|5173|3000|3900|4000|4400|4510|460[01]|18080|19080|19090)\//, `${id} default port`);
     }
-    assert.equal((await t.call('POST', '/api/presets/banking')).json.url, 'http://localhost:9901/mcp');
+    const b = (await t.call('POST', '/api/presets/banking')).json;
+    assert.equal(b.url, 'http://localhost:8081/mcp');
+    assert.equal(b.token, 'set', 'the banking preset carries a token (the family banking MCP is bearer-token only)');
   } finally { await t.close(); }
 });
 test('a typed server URL must be https (http only on loopback), carry no credentials and not be a literal private address', async () => {
