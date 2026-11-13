@@ -115,13 +115,13 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
       </p>
       <div className="row wrap">
         <button type="button" aria-pressed={active} onClick={() => onSelect(c.id)}>{active ? "In use" : "Use this connection"}</button>
-        <button type="button" onClick={() => onTest(c.id)}>Test connection</button>
+        <button type="button" data-testid="test-conn" onClick={() => onTest(c.id)}>Test connection</button>
         {c.kind === "pingone" && c.auth === "interactive" && (st.signedIn
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
           : <button type="button" onClick={signIn}>Sign in</button>)}
         {role && c.auth === "worker" && (
           <span className="seg" role="group" aria-label="Demo role">
-            {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id))}>{r}</button>)}
+            {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id, { modal: false }))}>{r}</button>)}
           </span>
         )}
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
@@ -141,12 +141,12 @@ export default function Connections({ mode, conns, activeId, onSelect, reload, t
       clientId: kind === "worker" ? "viewer-demo" : "admin-demo", ...(kind === "worker" ? { clientSecret: "demo-secret" } : { redirectUri: redirectUriFor() }) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { say(r.json?.message || "Could not add the demo."); return; }
-    say("Mock demo added."); await reload(); onSelect(r.json.id); if (kind === "worker") runTest(r.json.id);
+    say("Mock demo added."); await reload(); onSelect(r.json.id); if (kind === "worker") runTest(r.json.id, { modal: false });
   }
   async function preset(id, name) {
     const r = await api.post(`/api/presets/${id}`);
     if (!r.ok) { say(r.json?.message || `Could not add ${name}.`); return; }
-    say(`${name} added.`); await reload(); onSelect(r.json.id); runTest(r.json.id);
+    say(`${name} added.`); await reload(); onSelect(r.json.id); runTest(r.json.id, { modal: false });
   }
   return (
     <>

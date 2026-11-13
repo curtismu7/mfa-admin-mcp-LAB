@@ -4,6 +4,7 @@ import fs from "node:fs";
 import ReturnLink from "./return-link/ReturnLink.jsx";
 import * as api from "./api.js";
 import Banner from "./components/Banner.jsx";
+import TestResultModal from "./components/TestResultModal.jsx";
 import Audit from "./pages/Audit.jsx";
 import Connections from "./pages/Connections.jsx";
 import Diagram from "./pages/Diagram.jsx";
@@ -37,6 +38,7 @@ function Shell() {
   const [conns, setConns] = useState([]);
   const [activeId, setActiveId] = useState(() => store.get("mfaadm.active"));
   const [tests, setTests] = useState({});
+  const [testModal, setTestModal] = useState(null); // { id } — the connection whose test result shows in the modal
   const [testBusy, setTestBusy] = useState(null);
   const [ts, setTs] = useState({ id: null, tools: null, loading: false, error: "" });
   const [msg, setMsg] = useState("");
@@ -79,12 +81,13 @@ function Shell() {
   const modeConns = conns.filter((c) => (mode === "mock") === isMockConn(c));
   const active = modeConns.find((c) => c.id === activeId) || modeConns[0] || null;
 
-  const runTest = useCallback(async (id) => {
+  const runTest = useCallback(async (id, { modal = true } = {}) => {
     setTestBusy(id); say("Testing the connection…");
     const r = await api.post(`/api/connections/${id}/test`);
     const t = r.ok ? r.json : { ok: false, error: r.json?.error || "error", message: r.status === 401 ? "Sign in first (interactive connection)." : r.json?.message || "The test failed." };
     setTests((x) => ({ ...x, [id]: t }));
     setTestBusy(null);
+    if (modal) setTestModal({ id }); // the result shows in the modal, not only in the live region; auto-runs pass modal:false
     say(t.ok ? `Connected: ${t.toolCount} tools.` : `Connection check failed: ${t.message}`);
     setTs((s) => (s.id === id ? { id: null, tools: null, loading: false, error: "" } : s));
     reload();
@@ -103,12 +106,12 @@ function Shell() {
       const q = new URLSearchParams(window.location.search);
       if (q.get("login")) {
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-        if (q.get("login") === "ok" && list.some((c) => c.id === q.get("connection"))) { select(q.get("connection")); say("Signed in."); runTest(q.get("connection")); }
+        if (q.get("login") === "ok" && list.some((c) => c.id === q.get("connection"))) { select(q.get("connection")); say("Signed in."); runTest(q.get("connection"), { modal: false }); }
         else say(`Sign-in failed (${q.get("reason") || "error"}). Nothing was stored.`);
       } else if (!list.some((c) => c.id === store.get("mfaadm.active"))) setActiveId(list[0]?.id ?? null);
       const want = q.get("connection") || (list.some((c) => c.id === store.get("mfaadm.active")) ? store.get("mfaadm.active") : list[0]?.id);
       const offline = list.find((c) => c.id === want && c.offline && c.auth === "worker");
-      if (offline && !q.get("login")) runTest(offline.id); // the mock demo is safe to test on its own; a real server waits for the button
+      if (offline && !q.get("login")) runTest(offline.id, { modal: false }); // the mock demo is safe to test on its own; a real server waits for the button
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,7 +119,7 @@ function Shell() {
   useEffect(() => { if ((route.page === "tools" || route.page === "tool") && active && ts.id !== active.id && !ts.loading) loadTools(active.id); }, [route.page, active, ts, loadTools]);
   async function reset() {
     const r = await api.post("/api/reset");
-    setEpoch((n) => n + 1); setTests({}); setTs({ id: null, tools: null, loading: false, error: "" });
+    setEpoch((n) => n + 1); setTests({}); setTestModal(null); setTs({ id: null, tools: null, loading: false, error: "" });
     await reload();
     say(r.ok ? "Reset: audit history, tokens and the mock tenant cleared, writes turned off, diagram restored. Saved connections kept." : "Reset failed: could not reach the server.");
   }
@@ -132,7 +135,12 @@ function Shell() {
       case "mcp-first": return <McpFirst />;
       case "stories": return <Stories />;
       case "diagram": return <Diagram theme={theme} />;
-      default: return <Connections mode={mode} conns={modeConns} activeId={active?.id ?? null} onSelect={select} reload={reload} tests={tests} testBusy={testBusy} runTest={runTest} now={now} say={say} />;
+      default: return (
+        <>
+          <Connections mode={mode} conns={modeConns} activeId={active?.id ?? null} onSelect={select} reload={reload} tests={tests} testBusy={testBusy} runTest={runTest} now={now} say={say} />
+          <TestResultModal conn={testModal ? conns.find((c) => c.id === testModal.id) : null} test={testModal ? tests[testModal.id] : null} busy={testBusy === testModal?.id} onClose={() => setTestModal(null)} />
+        </>
+      );
     }
   })();
 
