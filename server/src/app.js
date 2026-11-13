@@ -64,7 +64,15 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
         refreshAuth: () => auth.renew(conn),
       });
     }
-    return createMcpClient({ url: dialUrl(conn.url), fetchImpl, handshake: true, getAuth: async () => (conn.token ? [conn.authHeader || 'Authorization', conn.token] : null) });
+    // A stored token is the bare credential; the standard Authorization header needs the Bearer scheme.
+    // A header named anything else (or a token that already carries a scheme) is sent as-is.
+    const headerFor = (c) => {
+      const name = c.authHeader || 'Authorization';
+      const v = String(c.token);
+      const needsBearer = /^authorization$/i.test(name) && !/^[a-z]+ /i.test(v);
+      return [name, needsBearer ? `Bearer ${v}` : v];
+    };
+    return createMcpClient({ url: dialUrl(conn.url), fetchImpl, handshake: true, getAuth: async () => (conn.token ? headerFor(conn) : null) });
   }
 
   function fail(res, conn, err) {
