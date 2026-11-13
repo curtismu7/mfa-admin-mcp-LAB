@@ -26,12 +26,19 @@ export function mcpUrl({ region, envId, endpointStyle, offlineBase }) {
 
 // Hosts a saved live connection may reach: the token / authorization host and the MCP host for PingOne, or the one server URL the
 // operator typed. The netguard hands out a permit for each of these only while an operation on that connection is in flight.
-export function liveHosts(conn) {
+// In the container a loopback target is dialled as host.docker.internal (see app.js dialUrl), so that name needs a permit too.
+const DIAL_ALIAS = { localhost: 'host.docker.internal' };
+export function liveHosts(conn, { container = process.env.MFAADM_CONTAINER === '1' } = {}) {
   if (!conn || (conn.kind === 'pingone' && conn.offline)) return [];
-  if (conn.kind === 'pingone') {
-    return [`auth.pingone.${conn.region}`, new URL(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })).hostname];
-  }
-  try { return [new URL(conn.url).hostname]; } catch { return []; }
+  const hosts = (u) => {
+    try {
+      const n = new URL(u).hostname.toLowerCase();
+      const alias = container && DIAL_ALIAS[n];
+      return alias ? [n, alias] : [n];
+    } catch { return []; }
+  };
+  if (conn.kind === 'pingone') return hosts(`https://auth.pingone.${conn.region}`).concat(hosts(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })));
+  return hosts(conn.url);
 }
 
 // A typed server URL is refused when its host is a literal private, link-local, shared-address or unspecified address (an SSRF guard for
