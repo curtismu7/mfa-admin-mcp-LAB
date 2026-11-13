@@ -236,9 +236,13 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   }));
 
   // ---- interactive login
+  // The browser's own origin decides the redirect port: behind the shared lab-proxy the request's
+  // Host is the proxy's upstream name (:7815), but the browser — and so the redirect — is on the
+  // proxy's :8443. X-Forwarded-Host carries the browser's host when a proxy is in front.
+  const browserPort = (req) => String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim().split(':').pop();
   app.post('/api/connections/:id/login/start', h((req, res, conn) => {
     let u; try { u = new URL(conn.redirectUri); } catch { u = null; }
-    const hostPort = String(req.headers.host || '').split(':').pop();
+    const hostPort = browserPort(req);
     if (!u || u.protocol !== 'http:' || !isLoopbackHost(u.hostname) || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
       return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be http://localhost:${hostPort}/api/oauth/callback (or /callback), exactly as registered on your OAuth application.` });
     }
