@@ -1,4 +1,4 @@
-# OrbStack:  HOST_PORT=7815 docker compose up --build -d   ->  http://127.0.0.1:7815/api/health   (HOST_PORT stays in 7815-5249)
+# OrbStack:  HOST_PORT=7815 docker compose up --build -d   ->  http://127.0.0.1:7815/api/health   (one port: 7815, from the packed range)
 # The server binds 0.0.0.0 INSIDE the container (MFAADM_BIND is the opt-in), but the port is published on loopback only.
 # Do not change the 127.0.0.1 below: Live can act on a PingOne tenant's admin plane (a test pins it).
 # Mock is the default and needs nothing. Live stays refused unless you start it with MFA_ADMIN_MCP_MODE=live in your shell.
@@ -9,6 +9,7 @@ name: mfa-admin-mcp-lab
 services:
   mfa-admin-mcp-lab:
     build: .
+    restart: unless-stopped   # rule 21: comes back when OrbStack restarts
     ports:
       - "127.0.0.1:${HOST_PORT:-7815}:7815"
     environment:

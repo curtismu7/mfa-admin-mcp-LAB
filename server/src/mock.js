@@ -53,7 +53,7 @@ const GENERAL_CATALOG = [
   { name: 'createUser', description: 'Create a user.', inputSchema: obj({ ...ENV, username: S, email: S, populationId: S }, ['environmentId', 'username']), role: 'admin' },
   { name: 'deleteUser', description: 'Delete a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), annotations: { destructiveHint: true }, role: 'admin' },
   { name: 'purgeUserData', description: 'Purge user data.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
-  { name: 'syncTenantWidgets', description: 'A tool with an unrecognised verb: classified write.', inputSchema: obj({ ...ENV }), role: 'admin' },
+  { name: 'syncTenantWidgets', description: 'Re-syncs tenant widgets. A deliberately unusual verb, to show how a tool with no recognised read/write verb is classified and gated.', inputSchema: obj({ ...ENV }), role: 'admin' },
 ];
 
 const CATALOG = [...MFA_CATALOG, ...GENERAL_CATALOG];

@@ -23,7 +23,7 @@ Nothing in this repo has talked to a real PingOne tenant. Run these yourself, wi
 11. One read call: on the Tools page call a read tool such as `listApplications` (UNVERIFIED that this exact name exists on your tenant; use whatever the list shows). Expect a result and an `ok` row in the Audit page.
 12. One gated write on a throwaway object (only after checks 1 to 10): turn on "allow writes" for the connection (the red banner appears), call a create tool for a throwaway object (for example a test population or application, named so you can recognise it), read the exact arguments in the confirm dialog, confirm, then verify in the PingOne console that it exists. Delete it in the console, or with the destructive-gated tool (type the tool name), and turn "allow writes" off again.
 13. The scan on the real tool list: press "Scan this server's tools". Record the count of findings and whether any is a false positive on real PingOne wording.
-14. Redirect base when containerised: with `HOST_PORT=5299 docker compose up -d`, the redirect URI to register is `http://localhost:5299/api/oauth/callback`. The container stub flow passed (`scripts/verify-running.mjs`); against PingOne it is UNVERIFIED.
+14. Redirect base when containerised: with `HOST_PORT=7815 docker compose up -d`, the redirect URI to register is `http://localhost:7815/api/oauth/callback`. The container stub flow passed (`scripts/verify-running.mjs`); against PingOne it is UNVERIFIED.
 
 ## Stop if
 
