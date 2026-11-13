@@ -115,7 +115,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
       </p>
       <div className="row wrap">
         <button type="button" aria-pressed={active} onClick={() => onSelect(c.id)}>{active ? "In use" : "Use this connection"}</button>
-        <button type="button" onClick={() => onTest(c.id)}>Test connection</button>
+        <button type="button" data-testid="test-conn" onClick={() => onTest(c.id)}>Test connection</button>
         {c.kind === "pingone" && c.auth === "interactive" && (st.signedIn
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
           : <button type="button" onClick={signIn}>Sign in</button>)}

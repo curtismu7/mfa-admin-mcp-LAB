@@ -368,3 +368,35 @@ test("theme select forces a theme", async () => {
   await userEvent.setup().selectOptions(await screen.findByLabelText("Theme"), "dark");
   expect(document.documentElement.dataset.theme).toBe("dark");
 });
+
+
+test("Test connection shows its result in a modal: verdict and tool count", async () => {
+  fakeApi({ conns: [conn({ offline: false, label: "Prod tenant" })] });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  console.log("DEBUG live pressed");
+  const btns = await screen.findAllByRole("button", { name: "Test connection" });
+  console.log("DEBUG buttons:", btns.length);
+  console.log("DEBUG buttons:", btns.length);
+  await user.click(btns[0]);
+  await new Promise((r) => setTimeout(r, 300));
+  console.log("DEBUG modal in DOM:", Boolean(document.querySelector('[data-testid="test-result"]')));
+  const dlg = await screen.findByTestId("test-result");
+  await waitFor(() => expect(within(dlg).getByTestId("test-verdict")).toHaveTextContent(/Connected/));
+  expect(within(dlg).getByTestId("test-count")).toHaveTextContent(String(TOOLS.length));
+  await user.click(within(dlg).getByTestId("test-close"));
+  expect(screen.queryByTestId("test-result")).toBeNull();
+});
+
+test("a failed test shows the error class and message in the modal", async () => {
+  fakeApi({ conns: [conn({ offline: false, label: "Prod tenant" })], handlers: { "POST /api/connections/:id/test": (body, state, json) => json(502, { error: "mcp_unreachable", message: "MCP HTTP request unreachable (ECONNREFUSED)" }) } });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  await user.click(await screen.findByTestId("test-conn"));
+  const dlg2 = await screen.findByTestId("test-result");
+  await waitFor(() => expect(within(dlg2).getByTestId("test-verdict")).toHaveTextContent(/did not work/));
+  expect(within(dlg2).getByTestId("test-error")).toHaveTextContent("mcp_unreachable");
+  expect(within(dlg2).getByTestId("test-message")).toHaveTextContent("ECONNREFUSED");
+});
