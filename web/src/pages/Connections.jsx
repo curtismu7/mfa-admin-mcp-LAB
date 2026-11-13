@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import * as api from "../api.js";
 import HealthCard from "../components/HealthCard.jsx";
+import Setup from "./Setup.jsx";
 import { DEMO_ENV_ID, redirectUriFor } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
 
@@ -175,6 +176,7 @@ export default function Connections({ mode, conns, activeId, onSelect, reload, t
       )}
       {conns.length > 0 && <ul className="plain">{conns.map((c) => <ConnCard key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} onChange={reload} onTest={runTest} say={say} />)}</ul>}
       {active && <HealthCard conn={active} test={tests[active.id]} busy={testBusy === active.id} now={now} />}
+      {mode === "live" && <Setup onCreated={async (c) => { await reload(); onSelect(c.id); }} say={say} />}
       {mode === "live" && <Wizard onCreated={async (c) => { await reload(); onSelect(c.id); }} say={say} />}
     </>
   );

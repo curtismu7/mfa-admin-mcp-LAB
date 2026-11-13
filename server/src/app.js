@@ -12,6 +12,7 @@ import { createHealth } from './health.js';
 import { createMcpClient } from './mcpClient.js';
 import { createMock } from './mock.js';
 import { permit } from './netguard.js';
+import { setupRouter } from './setup.js';
 import { scrub, scrubJson } from './redact.js';
 import { hostCheck, isLoopbackHost, labAllowedHosts, sameOriginWrites } from './security.js';
 import { createStore } from './store.js';
@@ -143,6 +144,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
 
   // ---- connections
   app.get('/api/connections', (_req, res) => res.json({ connections: store.list().map(view) }));
+  setupRouter(app, { fetchImpl, env });
   app.post('/api/connections', (req, res) => {
     const wantsMock = req.body?.kind === 'pingone' && req.body?.offline === true;
     if (!wantsMock && liveGate) return refuseLive(res);
