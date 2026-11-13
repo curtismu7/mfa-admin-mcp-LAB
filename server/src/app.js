@@ -47,15 +47,24 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   const secretsFor = (conn) => [...store.secretsOf(conn), ...auth.allSecrets()];
   const view = (c) => ({ ...store.publicView(c), auth_status: auth.status(c) });
 
+  // Inside the container, 'localhost' in a saved URL is the container itself, not the machine the
+  // browser means. When running as the container image, dial the host for loopback targets
+  // (host.docker.internal; the compose file's loopback-only publish is unchanged).
+  const dialUrl = (raw) => {
+    if (process.env.MFAADM_CONTAINER !== '1') return raw;
+    try { const u = new URL(raw); if (isLoopbackHost(u.hostname)) { u.hostname = 'host.docker.internal'; return u.toString(); } } catch { /* kept as-is */ }
+    return raw;
+  };
+
   function clientFor(conn) {
     if (conn.kind === 'pingone') {
       return createMcpClient({
-        url: mcpUrl({ ...conn, offlineBase: offlineBase(conn) }), fetchImpl,
+        url: conn.offline ? mcpUrl({ ...conn, offlineBase: offlineBase(conn) }) : dialUrl(mcpUrl(conn)), fetchImpl,
         getAuth: async () => ['Authorization', `Bearer ${await auth.accessToken(conn)}`],
         refreshAuth: () => auth.renew(conn),
       });
     }
-    return createMcpClient({ url: conn.url, fetchImpl, handshake: true, getAuth: async () => (conn.token ? [conn.authHeader || 'Authorization', conn.token] : null) });
+    return createMcpClient({ url: dialUrl(conn.url), fetchImpl, handshake: true, getAuth: async () => (conn.token ? [conn.authHeader || 'Authorization', conn.token] : null) });
   }
 
   function fail(res, conn, err) {
