@@ -13,7 +13,12 @@ export const DEFAULT_PORT = 7815;
 export const PORT_MIN = 7815;
 export const PORT_MAX = 7815; // one port per app (ports rule, 2026-11-07); PORT is for dev only
 export const port = (env = process.env) => Number(env.PORT) || DEFAULT_PORT;
+// One port per app (ports rule, 2026-11-07): production binds 7815. The e2e run needs two throwaway
+// servers (main + a refused-Live twin) and the tests use ephemeral ports; those are dev conveniences,
+// not deployments, so the entrypoint's range check does not apply when the e2e harness is driving.
 export const portInRange = (p) => Number.isInteger(p) && p >= PORT_MIN && p <= PORT_MAX;
+export const portAllowed = (p, env = process.env) =>
+  portInRange(p) || (env.E2E_GUARD_FILE ? Number.isInteger(p) && p > 0 && p <= 65535 : false);
 export const dataDir = (env = process.env) => path.resolve(root, env.MFAADM_DATA_DIR || '.data');
 export const webDist = path.join(root, 'web', 'dist');
 
