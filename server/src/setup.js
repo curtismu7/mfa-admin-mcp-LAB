@@ -8,8 +8,30 @@
 // the signed-in user, not the app. So the app is a plain public OAuth client:
 // AUTHORIZATION_CODE + REFRESH_TOKEN, tokenEndpointAuthMethod NONE, PKCE
 // S256_REQUIRED, response type CODE. No roles on the app, no secret.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { liveRefusal } from './config.js';
 import { permit } from './netguard.js';
+
+// The Management worker for setup lives in the same local file the "Add PingOne worker"
+// preset uses (MFAADM_WORKER_ENV_FILE, default ~/.config/mfa-admin-mcp/worker.env):
+// PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and optionally PINGONE_ENV_ID / PINGONE_REGION
+// so the user does not type the environment id either. The secret is read per request and
+// never stored, logged, or echoed.
+export function readWorkerEnv(env = process.env) {
+  const file = env.MFAADM_WORKER_ENV_FILE || path.join(os.homedir(), '.config', 'mfa-admin-mcp', 'worker.env');
+  let txt;
+  try { txt = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  const v = {};
+  for (const line of txt.split('\n')) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    const i = line.indexOf('=');
+    if (i > 0) v[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  if (!v.PINGONE_CLIENT_ID || !v.PINGONE_CLIENT_SECRET) return null;
+  return { clientId: v.PINGONE_CLIENT_ID, clientSecret: v.PINGONE_CLIENT_SECRET, envId: v.PINGONE_ENV_ID || null, region: (v.PINGONE_REGION || '').toLowerCase() || null };
+}
 
 const APP_NAME = 'MFA Admin MCP LAB (sign-in)';
 const CALLBACK = '/api/oauth/callback';
@@ -34,30 +56,32 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
   const refused = liveRefusal(env);
   // Read-only: check what setup would find/create. No credential handling.
   app.post('/api/setup/check', async (req, res) => {
-    const region = String(req.body?.region || 'com').toLowerCase().replace(/[^a-z]/g, '');
-    const envId = String(req.body?.envId || '');
+    const w = readWorkerEnv(env);
+    const region = String(req.body?.region || w?.region || 'com').toLowerCase().replace(/[^a-z]/g, '');
+    const envId = String(req.body?.envId || w?.envId || '');
     if (!/^[0-9a-f-]{36}$/.test(envId)) return res.status(400).json({ error: 'bad_request', message: 'envId must be a PingOne environment id (a UUID)' });
     const api = `https://api.pingone.${region}/v1/environments/${envId}`;
     // Unauthenticated reachability probe: OIDC discovery needs no token (GET /environments does).
-    let env;
     const discovery = `https://auth.pingone.${region}/${envId}/as/.well-known/openid-configuration`;
-    try { env = await withPermit(`auth.pingone.${region}`, async () => j(await fetchImpl(discovery, { signal: AbortSignal.timeout(10_000) }))); } catch { env = { status: 0, b: null }; }
-    if (env.status !== 200) return res.json({ ok: false, stage: 'environment', message: env.status === 404 ? 'No such environment (or the region is wrong).' : env.status === 0 ? 'The environment endpoint was unreachable (network).' : `The environment endpoint answered ${env.status}. Check the region and the id.` });
+    let probe;
+    try { probe = await withPermit(`auth.pingone.${region}`, async () => j(await fetchImpl(discovery, { signal: AbortSignal.timeout(10_000) }))); } catch { probe = { status: 0, b: null }; }
+    if (probe.status !== 200) return res.json({ ok: false, stage: 'environment', message: probe.status === 404 ? 'No such environment (or the region is wrong).' : probe.status === 0 ? 'The environment endpoint was unreachable (network).' : `The environment endpoint answered ${probe.status}. Check the region and the id.` });
     const name = 'the environment';
     // The callback this lab will demand, on the browser's own origin:
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim();
     const port = host.split(':').pop();
-    return res.json({ ok: true, environment: name, region, envId, callback: `http://localhost:${port}${CALLBACK}` });
+    return res.json({ ok: true, environment: name, region, envId, callback: `http://localhost:${port}${CALLBACK}`, workerEnv: Boolean(w) });
   });
 
   app.post('/api/setup/apply', async (req, res) => {
     if (refused) return res.status(403).json({ error: 'live_refused', message: `Live is refused: ${refused.failed.join(', ')}.`, failed: refused.failed });
-    const region = String(req.body?.region || 'com').toLowerCase().replace(/[^a-z]/g, '');
-    const envId = String(req.body?.envId || '');
-    const workerId = String(req.body?.workerClientId || '');
-    const workerSecret = String(req.body?.workerClientSecret || '');
+    const w = readWorkerEnv(env);
+    const region = String(req.body?.region || w?.region || 'com').toLowerCase().replace(/[^a-z]/g, '');
+    const envId = String(req.body?.envId || w?.envId || '');
+    const workerId = String(req.body?.workerClientId || w?.clientId || '');
+    const workerSecret = String(req.body?.workerClientSecret || w?.clientSecret || '');
     if (!/^[0-9a-f-]{36}$/.test(envId)) return res.status(400).json({ error: 'bad_request', message: 'envId must be a PingOne environment id (a UUID)' });
-    if (!workerId || !workerSecret) return res.status(400).json({ error: 'bad_request', message: 'A Management worker client id and secret are required (the worker needs a role that can read and update applications).' });
+    if (!workerId || !workerSecret) return res.status(400).json({ error: 'bad_request', message: 'No Management worker found. Create ~/.config/mfa-admin-mcp/worker.env with PINGONE_CLIENT_ID and PINGONE_CLIENT_SECRET (and optionally PINGONE_ENV_ID and PINGONE_REGION), or paste the client id and secret here.' });
     const as = `https://auth.pingone.${region}/${envId}/as`;
     const api = `https://api.pingone.${region}/v1/environments/${envId}`;
     const basic = Buffer.from(`${workerId}:${workerSecret}`).toString('base64');

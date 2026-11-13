@@ -11,6 +11,7 @@ export default function Setup({ onCreated, say }) {
   const [busy, setBusy] = useState(false);
   const [check, setCheck] = useState(null);
   const [err, setErr] = useState("");
+  const [workerEnv, setWorkerEnv] = useState(null); // true = the lab found its worker.env; no pasting needed
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
 
   async function checkEnv(e) {
@@ -20,7 +21,8 @@ export default function Setup({ onCreated, say }) {
     if (!r.ok) { setErr(r.json?.message || "The check failed."); setCheck(null); return; }
     if (!r.json.ok) { setErr(r.json.message); setCheck(null); return; }
     setCheck(r.json);
-    say(`Environment "${r.json.environment}" found.`);
+    setWorkerEnv(r.json.workerEnv === true);
+    say(r.json.workerEnv ? `Environment found; the lab's worker.env will be used for setup.` : `Environment "${r.json.environment}" found.`);
   }
 
   async function apply(e) {
@@ -39,7 +41,7 @@ export default function Setup({ onCreated, say }) {
     <form className="card" onSubmit={check ? apply : checkEnv} aria-labelledby="setup-h" data-testid="setup">
       <h2 id="setup-h">Set up hosted PingOne MCP (automatic)</h2>
       <p>The lab configures your tenant for you: it finds or creates a sign-in application (authorization code + PKCE), registers this lab's callback on it, and saves the connection. All you add afterwards is your admin sign-in.</p>
-      <p className="hint">You need a <strong>Management worker application</strong> (client_credentials) whose identity can read and update applications — e.g. an Environment Admin role. Its client id and secret are pasted once, used for one token mint, and never stored; only this lab's server sees them.</p>
+      <p className="hint">Setup uses a <strong>Management worker application</strong> (client_credentials) whose identity can read and update applications — e.g. an Environment Admin role. If the lab's <code>~/.config/mfa-admin-mcp/worker.env</code> exists (PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET), it is used automatically and nothing is pasted. Otherwise paste the client id and secret below: used for one token mint, never stored; only this lab's server sees them.</p>
       <div className="grid2">
         <label className="field">Region
           <select value={f.region} onChange={set("region")}>{["com", "eu", "asia", "ca"].map((r) => <option key={r}>{r}</option>)}</select>
@@ -50,8 +52,9 @@ export default function Setup({ onCreated, say }) {
       </div>
       {check && (
         <div className="redirect" data-testid="setup-plan">
-          <p>Environment <strong>{check.environment}</strong> found. Setup will register this callback:</p>
+          <p>Environment found. Setup will register this callback:</p>
           <p className="row"><code>{check.callback}</code></p>
+          {workerEnv && <p className="hint" data-testid="setup-workerenv">Using the worker credentials from <code>~/.config/mfa-admin-mcp/worker.env</code> — nothing to paste.</p>}
           <label className="field">Worker client id
             <input value={f.workerClientId} onChange={set("workerClientId")} required spellCheck="false" autoComplete="off" />
           </label>
@@ -62,7 +65,7 @@ export default function Setup({ onCreated, say }) {
         </div>
       )}
       {err && <p className="err-text" role="alert">{err}</p>}
-      <button type="submit" className="primary" disabled={busy} data-testid="setup-go">{busy ? "Working…" : check ? "Create sign-in app and save connection" : "Check the environment"}</button>
+      <button type="submit" className="primary" disabled={busy} data-testid="setup-go">{busy ? "Working…" : check ? (workerEnv ? "Configure my tenant and save the connection" : "Create sign-in app and save connection") : "Check the environment"}</button>
     </form>
   );
 }
