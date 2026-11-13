@@ -121,7 +121,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
           : <button type="button" onClick={signIn}>Sign in</button>)}
         {role && c.auth === "worker" && (
           <span className="seg" role="group" aria-label="Demo role">
-            {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id))}>{r}</button>)}
+            {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id, { modal: false }))}>{r}</button>)}
           </span>
         )}
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
