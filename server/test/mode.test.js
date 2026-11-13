@@ -1,4 +1,4 @@
-// Mock / Live: Live is refused unless every guard passes (owner opt-in, loopback bind). Mock never needs the network.
+// Mock / Live: Live is refused unless every guard passes (loopback bind, or the container opt-in). Mock never needs the network.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,7 @@ import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
 let s;
-before(async () => { s = await startApp({ env: { [MODE_KEY]: 'mock' } }); });
+before(async () => { s = await startApp({ env: { [MODE_KEY]: 'mock', MFAADM_BIND: '0.0.0.0' } }); }); // non-loopback bind: this suite's 'refused' tests have a server that refuses Live; everything loopback-side still works
 after(async () => { await s.close(); assert.deepEqual(guard.attempts, [], 'zero outbound attempts'); guard.restore(); });
 
 const liveBody = { kind: 'custom', label: 'x', url: 'http://127.0.0.1:9/mcp' };
@@ -19,15 +19,15 @@ test('GET /api/info: Mock is the mode, Live is refused and says which guard fail
   const r = await s.call('GET', '/api/info');
   assert.equal(r.status, 200);
   assert.equal(r.json.mode, 'mock'); assert.deepEqual(r.json.modes, ['mock', 'live']);
-  assert.equal(r.json.live.available, false); assert.deepEqual(r.json.live.failed, ['owner-opt-in']);
-  assert.ok(r.json.live.needs.length === 1 && r.json.live.needs[0].includes(MODE_KEY));
+  assert.equal(r.json.live.available, false, 'this suite binds non-loopback, so Live is refused (owner decision 2026-11-13: the bind is the only guard)');
+  assert.deepEqual(r.json.live.failed, ['loopback-bind']);
   assert.equal(r.headers.get('cache-control'), 'no-store');
 });
 
-test('with Live refused: a saved Live connection cannot be created, from the form or a preset, and nothing is stored', async () => {
+test('with Live refused by the bind: a saved Live connection cannot be created, from the form or a preset, and nothing is stored', async () => {
   for (const body of [liveBody, workerConn({ offline: false }), { ...workerConn({ offline: false }), auth: 'interactive', redirectUri: `${s.origin.replace('127.0.0.1', 'localhost')}/api/oauth/callback` }]) {
     const r = await s.call('POST', '/api/connections', body);
-    assert.equal(r.status, 403, r.text); assert.equal(r.json.error, 'live_refused'); assert.deepEqual(r.json.failed, ['owner-opt-in']);
+    assert.equal(r.status, 403, r.text); assert.equal(r.json.error, 'live_refused'); assert.deepEqual(r.json.failed, ['loopback-bind']);
   }
   for (const id of ['banking', 'opensearch', 'pingone']) assert.equal((await s.call('POST', `/api/presets/${id}`)).status, 403, id);
   for (const id of ['nope', '__proto__', 'constructor', 'toString']) { const r = await s.call('POST', `/api/presets/${id}`); assert.equal(r.status, 404, id); assert.equal(r.json.error, 'unknown_preset', id); }
@@ -62,16 +62,14 @@ test('with Live refused: the Mock demo works in full (tools, call, scan, audit),
   assert.deepEqual(guard.attempts, []);
 });
 
-test('the guards: Live needs the owner opt-in and a loopback bind (or the container opt-in)', () => {
-  assert.deepEqual(liveGuards({}).map((g) => [g.id, g.ok]), [['owner-opt-in', false], ['loopback-bind', true]]);
-  assert.equal(liveRefusal({ [MODE_KEY]: 'live' }), null);
-  assert.deepEqual(liveRefusal({ [MODE_KEY]: 'live', MFAADM_BIND: '0.0.0.0', MFAADM_CONTAINER: '1' }), null, 'the container sets both and is published on loopback only');
-  assert.deepEqual(liveRefusal({ [MODE_KEY]: 'live', MFAADM_BIND: '127.0.0.1' }), null, 'an explicit loopback bind is fine on a host');
-  for (const bind of ['0.0.0.0', '::', '192.0.2.1']) assert.deepEqual(liveRefusal({ [MODE_KEY]: 'live', MFAADM_BIND: bind })?.failed, ['loopback-bind'], `a host run bound to ${bind} is refused for Live`);
-  assert.deepEqual(liveRefusal({ [MODE_KEY]: 'live', MFAADM_BIND: '0.0.0.0', MFAADM_CONTAINER: '0' })?.failed, ['loopback-bind'], 'only the exact marker 1 counts');
-  assert.deepEqual(liveRefusal({ [MODE_KEY]: 'live', MFAADM_CONTAINER: '1' }), null, 'the marker without a wide bind changes nothing');
-  assert.deepEqual(liveRefusal({ [MODE_KEY]: 'mock' }).failed, ['owner-opt-in']);
-  assert.deepEqual(liveRefusal({ MODE: 'live' }).failed, ['owner-opt-in'], 'a bare MODE is never read');
+test('the guards: Live needs a loopback bind (or the container opt-in); no env opt-in', () => {
+  assert.deepEqual(liveGuards({}).map((g) => [g.id, g.ok]), [['loopback-bind', true]]);
+  assert.equal(liveRefusal({}), null, 'Live is allowed with no configuration at all');
+  assert.deepEqual(liveRefusal({ MFAADM_BIND: '0.0.0.0', MFAADM_CONTAINER: '1' }), null, 'the container sets both and is published on loopback only');
+  assert.deepEqual(liveRefusal({ MFAADM_BIND: '127.0.0.1' }), null, 'an explicit loopback bind is fine on a host');
+  for (const bind of ['0.0.0.0', '::', '192.0.2.1']) assert.deepEqual(liveRefusal({ MFAADM_BIND: bind })?.failed, ['loopback-bind'], `a host run bound to ${bind} is refused for Live`);
+  assert.deepEqual(liveRefusal({ MFAADM_BIND: '0.0.0.0', MFAADM_CONTAINER: '0' })?.failed, ['loopback-bind'], 'only the exact marker 1 counts');
+  assert.deepEqual(liveRefusal({ MFAADM_CONTAINER: '1' }), null, 'the marker without a wide bind changes nothing');
 });
 
 test('with Live refused: the OAuth callback of a saved Live connection is refused before any token request, and sends nothing', async () => {

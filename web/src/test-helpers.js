@@ -21,7 +21,7 @@ export const conn = (o = {}) => ({ id: "c1", kind: "pingone", label: "Mock demo"
 
 // A tiny fake of this app's API. `calls` records every request; handlers can be overridden per test.
 export const LIVE_OK = { available: true, failed: [], needs: [] };
-export const LIVE_REFUSED = { available: false, failed: ["owner-opt-in"], needs: ["MFA_ADMIN_MCP_MODE=live is set in the shared settings file"] };
+export const LIVE_REFUSED = { available: false, failed: ["loopback-bind"], needs: ["the server must be bound to loopback"] };
 export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK } = {}) {
   const state = { conns: structuredClone(conns), calls: [], audit };
   const json = (status, body) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
@@ -34,7 +34,7 @@ export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers 
     switch (key) {
       case "GET /api/info": return json(200, { mode: serverMode, source: serverMode, modes: ["mock", "live"], realAvailable: live.available, realReason: live.available ? null : "refused", live });
       case "POST /api/mode":
-        if (body.source === "real" && !live.available) return json(409, { error: "real_not_available", message: "Live is refused: owner-opt-in." });
+        if (body.source === "real" && !live.available) return json(409, { error: "real_not_available", message: "Live is refused: loopback-bind." });
         serverMode = body.source; return json(200, { source: serverMode, realAvailable: live.available, realReason: null });
       case "POST /api/reset": return json(200, { ok: true, cleared: ["audit"], kept: ["connections"] });
       case "GET /api/connections": return json(200, { connections: state.conns });

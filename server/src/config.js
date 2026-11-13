@@ -1,7 +1,7 @@
 // Mode and port configuration.
 //
-// MFA_ADMIN_MCP_MODE is the owner's opt-in for Live. mock (the default) keeps Live refused; live lets the header toggle go to
-// Live. The page always opens in Mock; Live is entered by pressing the header toggle each time (nothing is remembered). A bare MODE is NOT read: the
+// Live is always available from the header toggle (owner decision 2026-11-13: no env opt-in; the button should just work). The page
+// always opens in Mock; Live is entered by pressing the header toggle each time (nothing is remembered). A bare MODE is NOT read: the
 // shared settings file is read by every standalone app, and another app's MODE must not switch this one. Anything that is not mock
 // or live is an error, never a silent fallback.
 import path from 'node:path';
@@ -37,7 +37,6 @@ export function modeFrom(env = process.env) {
 export function liveGuards(env = process.env) {
   const host = bindHost(env);
   return [
-    { id: 'owner-opt-in', ok: env[MODE_KEY] === 'live', detail: `${MODE_KEY}=live is set in the shared settings file (~/Development/.env, or the path in STANDALONE_ENV) or the environment` },
     { id: 'loopback-bind', ok: isLoopbackHost(host) || (Boolean(env.MFAADM_BIND) && env.MFAADM_CONTAINER === '1'), detail: 'the server is bound to loopback; a non-loopback bind (MFAADM_BIND) is accepted for Live only inside the container image, which sets MFAADM_CONTAINER=1 and is published on 127.0.0.1 only' },
   ];
 }

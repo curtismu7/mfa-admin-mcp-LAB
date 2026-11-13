@@ -24,7 +24,7 @@ The same picture is the app's Diagram page (ReactFlow: movable boxes, Simulate, 
 | `gate.js` | `decide()` (writes off, confirm, argsHash, typed name) and the audit log (`audit.jsonl`, redacted). |
 | `scanner/` | Metadata rules copied from `mcp-tools` (`rules.js`, `unicode.js`, `engine.js`). Reads `tools/list`; reports only. |
 | `mock.js` | In-process stand-in for PingOne's authorization server and hosted MCP server, role-gated catalog (viewer sees read tools, admin sees all). Illustrative sample, not a recording; write tools change an in-memory fake tenant. |
-| `config.js`, `settings.js` | The mode guards (`liveGuards`, `liveRefusal`): Live is refused unless the owner opts in (`MFA_ADMIN_MCP_MODE=live`) and the bind is loopback or the container opt-in. The shared settings file (`~/Development/.env`, or `STANDALONE_ENV`) read through `util.parseEnv`, three keys only. |
+| `config.js`, `settings.js` | The mode guards (`liveGuards`, `liveRefusal`): Live is refused only when the bind is non-loopback without the container opt-in (owner decision 2026-11-13: no env opt-in; the Real button works out of the box). The shared settings file (`~/Development/.env`, or `STANDALONE_ENV`) read through `util.parseEnv`, three keys only. |
 | `netguard.js` | Runtime guard installed when the server starts: refuses every non-loopback socket, DNS lookup, fetch, UDP send and UDP connect. A saved Live connection takes a short-lived permit for each of its own hosts (`urls.js` `liveHosts`) while one operation runs. Mock needs none. |
 | `security.js`, `redact.js`, `urls.js`, `validate.js`, `health.js`, `doctor.js` | Loopback/Host/same-origin guards; scrubbing; endpoint shapes and the typed-URL rules; camelCase argument warnings; `demo-health/1`; preflight. |
 

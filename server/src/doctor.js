@@ -17,7 +17,7 @@ export function runChecks({ env = process.env } = {}) {
   try {
     const mode = modeFrom(env);
     const refusal = liveRefusal(env);
-    add('mode', 'pass', mode === 'live' && !refusal ? `${MODE_KEY}=live: Live is allowed (owner opt-in); the page still opens in Mock` : mode === 'live' ? `${MODE_KEY}=live is set but Live is REFUSED (${refusal.failed.join(', ')})` : `${MODE_KEY} not set (mock): Live is refused until the owner opts in`);
+    add('mode', 'pass', mode === 'live' && !refusal ? `live: Live is allowed; the page still opens in Mock` : mode === 'live' ? `${MODE_KEY}=live is set but Live is REFUSED (${refusal.failed.join(', ')})` : `${MODE_KEY} not set (mock): Live stays available from the header toggle`);
   } catch (e) { add('mode', 'fail', e.message); }
 
   const dir = dataDir(env);

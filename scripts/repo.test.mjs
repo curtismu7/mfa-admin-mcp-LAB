@@ -112,7 +112,7 @@ test('no EC key generation through generateKeyPair(Sync) anywhere (SIGABRT on No
   assert.deepEqual(hits, []);
 });
 
-test('Live stays an opt-in: the page opens in Mock, and the only mode key is MFA_ADMIN_MCP_MODE', () => {
+test('Live is gated by the bind only (no env opt-in): the page opens in Mock, and the only mode key is MFA_ADMIN_MCP_MODE', () => {
   const app = read('web/src/App.jsx');
   assert.match(app, /useState\("mock"\)/);
   const cfg = read('server/src/config.js');
