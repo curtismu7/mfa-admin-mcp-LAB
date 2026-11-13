@@ -81,13 +81,13 @@ function Shell() {
   const modeConns = conns.filter((c) => (mode === "mock") === isMockConn(c));
   const active = modeConns.find((c) => c.id === activeId) || modeConns[0] || null;
 
-  const runTest = useCallback(async (id) => {
+  const runTest = useCallback(async (id, { modal = true } = {}) => {
     setTestBusy(id); say("Testing the connection…");
     const r = await api.post(`/api/connections/${id}/test`);
     const t = r.ok ? r.json : { ok: false, error: r.json?.error || "error", message: r.status === 401 ? "Sign in first (interactive connection)." : r.json?.message || "The test failed." };
     setTests((x) => ({ ...x, [id]: t }));
     setTestBusy(null);
-    setTestModal({ id }); // the result shows in the modal, not only in the live region
+    if (modal) setTestModal({ id }); // the result shows in the modal, not only in the live region; auto-runs pass modal:false
     say(t.ok ? `Connected: ${t.toolCount} tools.` : `Connection check failed: ${t.message}`);
     setTs((s) => (s.id === id ? { id: null, tools: null, loading: false, error: "" } : s));
     reload();
@@ -106,12 +106,12 @@ function Shell() {
       const q = new URLSearchParams(window.location.search);
       if (q.get("login")) {
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-        if (q.get("login") === "ok" && list.some((c) => c.id === q.get("connection"))) { select(q.get("connection")); say("Signed in."); runTest(q.get("connection")); }
+        if (q.get("login") === "ok" && list.some((c) => c.id === q.get("connection"))) { select(q.get("connection")); say("Signed in."); runTest(q.get("connection"), { modal: false }); }
         else say(`Sign-in failed (${q.get("reason") || "error"}). Nothing was stored.`);
       } else if (!list.some((c) => c.id === store.get("mfaadm.active"))) setActiveId(list[0]?.id ?? null);
       const want = q.get("connection") || (list.some((c) => c.id === store.get("mfaadm.active")) ? store.get("mfaadm.active") : list[0]?.id);
       const offline = list.find((c) => c.id === want && c.offline && c.auth === "worker");
-      if (offline && !q.get("login")) runTest(offline.id); // the mock demo is safe to test on its own; a real server waits for the button
+      if (offline && !q.get("login")) runTest(offline.id, { modal: false }); // the mock demo is safe to test on its own; a real server waits for the button
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
