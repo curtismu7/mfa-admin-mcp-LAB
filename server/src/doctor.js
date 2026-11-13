@@ -2,7 +2,7 @@
 // Each check: { id, level: 'pass' | 'info' | 'fail', detail }.
 import fs from 'node:fs';
 import path from 'node:path';
-import { MODE_KEY, PORT_MAX, PORT_MIN, dataDir, liveRefusal, modeFrom, port, portInRange } from './config.js';
+import { MODE_KEY, PORT_MAX, PORT_MIN, dataDir, liveRefusal, modeFrom, port, portAllowed, portInRange } from './config.js';
 import { createDiagrams } from './diagrams.js';
 import { bindHost, isLoopbackHost, labAllowedHosts } from './security.js';
 
@@ -33,7 +33,7 @@ export function runChecks({ env = process.env } = {}) {
   } catch (e) { add('lab-hosts', 'fail', e.message); }
 
   const p = port(env);
-  add('port-range', portInRange(p) ? 'pass' : 'fail', portInRange(p) ? `server port ${p} (within ${PORT_MIN}-${PORT_MAX})` : `server port ${p} is outside ${PORT_MIN}-${PORT_MAX}`);
+  add('port-range', portAllowed(p) ? 'pass' : 'fail', portAllowed(p) ? (portInRange(p) ? `server port ${p} (the app's port)` : `server port ${p} (e2e harness: outside the app's port, allowed only under the e2e guard)`) : `server port ${p} is outside ${PORT_MIN}-${PORT_MAX}`);
 
   try { const d = createDiagrams(); add('diagrams', 'pass', `${d.names.length} diagrams are valid diagram-studio/1 data (${d.names.join(', ')})`); }
   catch (e) { add('diagrams', 'fail', e.message); }

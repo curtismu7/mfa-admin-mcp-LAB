@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
 import fs from "node:fs";
-import ShelfLink from "./components/ShelfLink.jsx";
 // Opened from Customer Agent LAB (UC-LEARN2 routes here): strip + header Back only, nothing preselected.
 import ReturnLink from "./return-link/ReturnLink.jsx";
 import * as api from "./api.js";
@@ -157,7 +156,6 @@ function Shell() {
               onReset={reset}
             >
               <ReturnLink app="mfa-admin-mcp" variant="header" />
-              <ShelfLink />
               <span className="chip" data-testid="mode">Mode: {mode}</span>
             </TopMenu>
           </div>

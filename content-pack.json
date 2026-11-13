@@ -6,7 +6,7 @@
   "demo": {
     "id": "mfa-admin-mcp",
     "name": "MFA Admin MCP LAB",
-    "catalog": "T1",
+    "catalog": "D132",
     "baseUrl": "http://localhost:7815",
     "doctor": "/api/health",
     "tags": [

@@ -33,7 +33,7 @@ export function buildPack({ commit } = {}) {
     title: 'MFA Admin MCP LAB',
     version: pkg.version,
     ...(commit ? { source: { repo: 'mfa-admin-mcp-LAB', commit } } : {}),
-    demo: { id: 'mfa-admin-mcp', name: 'MFA Admin MCP LAB', catalog: 'T1', baseUrl: 'http://localhost:7815', doctor: '/api/health', tags: ['mcp', 'pingone', 'admin-plane', 'read-only'] },
+    demo: { id: 'mfa-admin-mcp', name: 'MFA Admin MCP LAB', catalog: 'D132', baseUrl: 'http://localhost:7815', doctor: '/api/health', tags: ['mcp', 'pingone', 'admin-plane', 'read-only'] },
     glossary: readJson('content/terms.json').sort(byId),
     sources: [],
     cards: CARDS.map(({ href, ...c }) => ({ ...c, action: { type: 'route', href } })).sort(byId),

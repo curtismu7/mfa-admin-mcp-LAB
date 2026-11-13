@@ -6,7 +6,7 @@ Fork of [pingone-mcp-inspector-LAB](https://github.com/curtismu7/pingone-mcp-ins
 
 Tier: Tester
 Repo: https://github.com/curtismu7/mfa-admin-mcp-LAB
-Catalog: T1 (placeholder until the shelf assigns one)
+Catalog: D132
 
 > **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is refused** until the owner opts in, and the banner on every tab, presenter mode included, names the mode. The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
 
@@ -56,7 +56,7 @@ No admin or worker credential belongs in this file, and none is read from it. Th
 ## Ports, and what to do if the port is taken
 
 Ports: mfa-admin-mcp listens on 7815 (set with PORT, default 7815).
-Port range for this app: 7815-7819.
+Port for this app: 7815 (from the packed range 7800-7999; one port per app).
 
 If the port is taken:
 1. Find what is using it:
@@ -106,11 +106,11 @@ The container publishes on `127.0.0.1` only (a test pins it), runs as the non-ro
 npm test      # server (node:test, glob), web (vitest) and the script tests (node --test scripts/*.test.mjs)
 ```
 
-On Node 26, with the counts from the last run in this repo: 79 server tests (node:test), 38 web tests (vitest) and 36 script tests (node:test), 153 in all, all passing. The Learning Hub pack is also checked against the hub's current schema (`content-pack.json` validates against `docs/content-pack.schema.json`, a copy of the kit's schema). Nothing in `npm test` reaches a real tenant: the server tests run under a recorder that fails a file on any non-loopback attempt.
+On Node 26, with the counts from the last run in this repo: 84 server tests (node:test), 86 web tests (vitest) and 36 script tests (node:test), 206 in all, all passing. The Learning Hub pack is also checked against the hub's current schema (`content-pack.json` validates against `docs/content-pack.schema.json`, a copy of the kit's schema). Nothing in `npm test` reaches a real tenant: the server tests run under a recorder that fails a file on any non-loopback attempt.
 
 ## Troubleshooting
 
-- **The port is taken, or "refusing to start: port-range".** See "Ports, and what to do if the port is taken". `PORT` must be inside 7815-7819.
+- **The port is taken, or "refusing to start: port-range".** See "Ports, and what to do if the port is taken". `PORT` must be 7815 (override only to dodge a running copy; the published Docker port stays 7815).
 - **`GET /` answers a JSON 404.** The UI is not built. Run `npm run build`, then restart.
 - **Pressing Live does nothing but show a message.** That is the designed behaviour: Live is refused until `MFA_ADMIN_MCP_MODE=live` is set in `~/Development/.env` (or the environment), then restart the server.
 - **A Live connection answers 403 `live_refused`.** Same cause. It was saved while Live was allowed; set the key again, or delete the connection.
@@ -142,7 +142,7 @@ Safety notes: loopback bind (refused otherwise unless `MFAADM_BIND` is set), Hos
 - **The SE k8s mock build is deferred (owner, 2026-10-31).** Docker is the only packaged form; there are no manifests or deploy scripts.
 - **No per-workspace isolation.** Tester tier does not require it.
 - **The PingOne worker preset reads a local credentials file** (`worker.env`, outside the repo and outside the shared settings file). Whether that fits the rule that worker credentials live only in the provisioning file is for the owner to decide (UNVERIFIED).
-- **Catalog id T1** is a placeholder until the shelf assigns the real one; it is not re-checked against the catalog here.
+- **Catalog id D132** matches the shelf catalog row added alongside the registry entry (demo-shelf-LAB PR #60).
 - **`npm run e2e` and the Playwright proof** are not part of `npm test` or CI.
 
 ## Docs

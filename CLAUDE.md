@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-MFA Admin MCP LAB (Tier: Tester, port 7815, range 7815-7819). A fork of pingone-mcp-inspector-LAB focused on PingOne's MFA administration MCP tool set: connects to the hosted PingOne MCP server (or any HTTP MCP server), lists tools with a safety class (read / write / destructive), calls them behind a confirm gate, scans the tool metadata, keeps a redacted audit log. The mock catalog is the MFA administration tool set (environment MFA settings, device-authentication and FIDO policies, notification policies, OATH tokens, email/phone/WhatsApp delivery settings) plus a small general-admin sample. Mock (the in-process mock demo) is the default; Live is owner-run and refused until opted in. Details: [README.md](README.md), [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md). Presenter script: [docs/talk-track.md](docs/talk-track.md).
+MFA Admin MCP LAB (Tier: Tester, catalog D132, port 7815). A fork of pingone-mcp-inspector-LAB focused on PingOne's MFA administration MCP tool set: connects to the hosted PingOne MCP server (or any HTTP MCP server), lists tools with a safety class (read / write / destructive), calls them behind a confirm gate, scans the tool metadata, keeps a redacted audit log. The mock catalog is the MFA administration tool set (environment MFA settings, device-authentication and FIDO policies, notification policies, OATH tokens, email/phone/WhatsApp delivery settings) plus a small general-admin sample. Mock (the in-process mock demo) is the default; Live is owner-run and refused until opted in. Details: [README.md](README.md), [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md). Presenter script: [docs/talk-track.md](docs/talk-track.md).
 
 ## Commands (from package.json)
 
@@ -10,7 +10,7 @@ npm test             # server (node --test test/*.test.js) + web (vitest) + scri
 npm run build        # builds web/dist, served by the server itself
 npm start            # http://127.0.0.1:7815/  (PORT to change)
 npm run dev          # API with --watch, Vite on 5202
-npm run doctor       # node 26, mode, data dir, bind, port range, netguard self-test, free port (PORT=7816 to dodge a running copy)
+npm run doctor       # node 26, mode, data dir, bind, port range, netguard self-test, free port (PORT=7815 to dodge a running copy)
 npm run reset        # POST /api/reset on the running app
 npm run smoke        # the mock demo end to end against the running app (removes what it made)
 npm run e2e          # headless Chromium on 5231; build first (E2E_CHROMIUM=<binary> if the Playwright build is missing)

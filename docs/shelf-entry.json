@@ -3,7 +3,7 @@
     {
       "id": "mfa-admin-mcp",
       "name": "MFA Admin MCP LAB",
-      "catalogId": "T1",
+      "catalogId": "D132",
       "kind": "Tester",
       "description": "Connect to PingOne's hosted MCP server (worker or interactive admin sign-in) or any MCP server, list its tools with a safety class, and call them read-only by default. Mock by default; Live is owner-run.",
       "url": "http://localhost:7815",

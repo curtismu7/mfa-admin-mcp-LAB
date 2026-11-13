@@ -37,7 +37,7 @@ test('README follows the README standard: title ends in LAB, plain Tier, Repo an
   assert.match(r.split('\n')[0], /^# .* LAB$/);
   assert.match(r, /^Tier: Tester$/m);
   assert.match(r, /^Repo: https:\/\/github\.com\/curtismu7\/mfa-admin-mcp-LAB$/m);
-  assert.match(r, /^Catalog: T1 \(placeholder until the shelf assigns one\)$/m);
+  assert.match(r, /^Catalog: D132$/m);
   const at = (h) => r.indexOf(`\n## ${h}`);
   const order = ['What is simulated', 'Run from a clone', 'Settings file', 'Ports, and what to do if the port is taken', 'Mock and live modes', 'Health, doctor and reset', 'Docker (optional)', 'Tests', 'Troubleshooting', 'Ownership'].map(at);
   assert.ok(order.every((i) => i > 0), order.join());
@@ -89,7 +89,7 @@ test('the CI workflow is GitHub-hosted, Node 26 only, and carries the forbidden-
   assert.match(ci, /forbidden-strings:/);
   assert.match(ci, /gitleaks/);
   assert.match(ci, /actions\/checkout@v5/);
-  assert.match(ci, /PORT=7816 npm run doctor/);
+  assert.match(ci, /PORT=7815 npm run doctor/);
 });
 
 test('the repo ships no k8s manifests, no deploy scripts, no hosted mode and no bare MODE', () => {
