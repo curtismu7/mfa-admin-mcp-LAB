@@ -14,7 +14,7 @@ import { createMock } from './mock.js';
 import { permit } from './netguard.js';
 import { setupRouter } from './setup.js';
 import { scrub, scrubJson } from './redact.js';
-import { hostCheck, isLoopbackHost, labAllowedHosts, sameOriginWrites } from './security.js';
+import { browserOrigin, hostCheck, isLoopbackHost, labAllowedHosts, safeReturnTo, sameOriginWrites } from './security.js';
 import { createStore } from './store.js';
 import { validateArgs } from './validate.js';
 import { liveHosts, mcpUrl } from './urls.js';
@@ -317,17 +317,18 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     if (!u || !schemeOk || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
       return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be http://localhost:${hostPort}/api/oauth/callback (or /callback), exactly as registered on your OAuth application.` });
     }
-    res.json({ authorizeUrl: auth.startLogin(conn, { idp: req.body?.idp }).authorizeUrl });
+    res.json({ authorizeUrl: auth.startLogin(conn, { idp: req.body?.idp, returnTo: safeReturnTo(req.body?.returnTo) }).authorizeUrl });
   }));
   const callback = async (req, res) => {
-    const at = `http://${req.headers.host}${req.path}`;
+    const at = `${browserOrigin(req, lab)}${req.path}`; // the URL the browser used, which behind the lab-proxy is not Host
+    const back = auth.pendingReturnTo(String(req.query.state ?? '')); // read before completeLogin consumes the state
     let location;
     try {
       const pendingConn = store.get(auth.pendingConnId(String(req.query.state ?? '')));
       if (pendingConn && !isMock(pendingConn) && liveGate) throw Object.assign(new Error('live is refused'), { code: 'live_refused' });
       if (pendingConn && isMock(pendingConn)) await ensureMock();
-      const r = await withPermits(pendingConn, () => auth.completeLogin({ q: req.query, at, getConn: (id) => store.get(id) })); location = `/?login=ok&connection=${encodeURIComponent(r.connId)}`; }
-    catch (err) { location = `/?login=error&reason=${encodeURIComponent(String(err.code || 'error'))}`; }
+      const r = await withPermits(pendingConn, () => auth.completeLogin({ q: req.query, at, getConn: (id) => store.get(id) })); location = `${back}?login=ok&connection=${encodeURIComponent(r.connId)}`; }
+    catch (err) { location = `${back}?login=error&reason=${encodeURIComponent(String(err.code || 'error'))}`; }
     res.redirect(302, location);
   };
   for (const p of CALLBACK_PATHS) app.get(p, callback);
