@@ -56,6 +56,7 @@ try {
 
   // Skip link, first load
   await go('connections');
+  await page.getByRole('heading', { name: 'Connections' }).waitFor({ timeout: 60_000 }); // the SPA has hydrated
   await page.keyboard.press('Tab');
   check((await page.evaluate(() => document.activeElement.textContent)) === 'Skip to content', 'the first Tab stop is the skip link');
   await page.keyboard.press('Enter');
