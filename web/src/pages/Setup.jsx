@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import * as api from "../api.js";
 
 // Set up hosted PingOne MCP: paste a Management worker client id + secret once;
@@ -6,8 +6,10 @@ import * as api from "../api.js";
 // registers this lab's callback on it, and saves the connection. The worker
 // secret is sent to this lab's server only, used for one token mint, and never
 // stored.
-export default function Setup({ onCreated, say }) {
-  const [f, setF] = useState({ region: "com", envId: "", workerClientId: "", workerClientSecret: "" });
+export default function Setup({ onCreated, say, defaults }) {
+  const [f, setF] = useState({ region: defaults.region || "com", envId: defaults.envId || "", workerClientId: "", workerClientSecret: "" });
+  // The default environment arrives after the first render; fill it unless the user has already typed one.
+  useEffect(() => { setF((x) => (x.envId || !defaults.envId ? x : { ...x, envId: defaults.envId, region: defaults.region || x.region })); }, [defaults]);
   const [busy, setBusy] = useState(false);
   const [check, setCheck] = useState(null);
   const [err, setErr] = useState("");

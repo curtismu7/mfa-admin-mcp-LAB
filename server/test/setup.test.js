@@ -134,3 +134,21 @@ test('apply: an existing app that lacks the callback gets it added by a full PUT
     assert.equal(r.status, 200);
   } finally { await t.close(); }
 });
+
+test('defaults: PINGONE_ENV_ID and PINGONE_REGION from worker.env, with no credentials needed and none returned', async () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'worker.env');
+  const get = async (env) => { const t = await startApp({ env }); try { return await t.call('GET', '/api/setup/defaults'); } finally { await t.close(); } };
+  fs.writeFileSync(file, `# a comment\nPINGONE_ENV_ID=${ENV_ID}\nPINGONE_REGION=EU\nPINGONE_CLIENT_ID=worker-id-sentinel\nPINGONE_CLIENT_SECRET=worker-secret-sentinel\n`, { mode: 0o600 });
+  const full = await get({ MFAADM_WORKER_ENV_FILE: file });
+  assert.equal(full.status, 200);
+  assert.deepEqual(full.json, { envId: ENV_ID, region: 'eu' });
+  assert.equal(full.headers.get('cache-control'), 'no-store');
+  assert.ok(!full.text.includes('sentinel'), 'neither the client id nor the secret is returned');
+  fs.writeFileSync(file, `PINGONE_ENV_ID=${ENV_ID}\n`);
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: ENV_ID, region: null }, 'the environment shows even when the worker credentials are missing');
+  fs.writeFileSync(file, 'PINGONE_ENV_ID=not-a-uuid\nPINGONE_REGION=com.evil\n');
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: null, region: null }, 'a malformed value never reaches a form');
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env') })).json, { envId: null, region: null });
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env'), PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'ca' })).json, { envId: ENV_ID, region: 'ca' }, 'the process env is the fallback, as for the preset');
+});
