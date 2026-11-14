@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import * as api from "../api.js";
 import HealthCard from "../components/HealthCard.jsx";
 import Setup from "./Setup.jsx";
@@ -12,8 +12,10 @@ function Field({ label, children, hint }) {
   return <label className="field">{label}{children}{hint && <small>{hint}</small>}</label>;
 }
 
-function Wizard({ onCreated, say }) {
-  const [f, setF] = useState(EMPTY);
+function Wizard({ onCreated, say, defaults }) {
+  const withDefaults = (x) => ({ ...x, envId: defaults.envId || "", ...(defaults.region ? { region: defaults.region } : {}) });
+  const [f, setF] = useState(() => withDefaults(EMPTY));
+  useEffect(() => { setF((x) => (x.envId || !defaults.envId ? x : withDefaults(x))); }, [defaults]); // eslint-disable-line react-hooks/exhaustive-deps
   const [err, setErr] = useState("");
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const uri = redirectUriFor();
@@ -27,7 +29,7 @@ function Wizard({ onCreated, say }) {
       : { kind: f.kind, label: f.label, url: f.url, ...(f.token ? { authHeader: f.authHeader, token: f.token } : {}) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { setErr(r.json?.message || "Could not save the connection."); return; }
-    setF((x) => ({ ...EMPTY, kind: x.kind, region: x.region })); // the secret fields are cleared; the server keeps the only copy
+    setF((x) => ({ ...withDefaults(EMPTY), kind: x.kind, region: x.region })); // the secret fields are cleared; the server keeps the only copy
     say(`Connection ${r.json.label} saved.`);
     onCreated(r.json);
   }
@@ -150,7 +152,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   );
 }
 
-export default function Connections({ mode, conns, activeId, onSelect, reload, tests, testBusy, runTest, now, say }) {
+export default function Connections({ defaults, mode, conns, activeId, onSelect, reload, tests, testBusy, runTest, now, say }) {
   const active = conns.find((c) => c.id === activeId);
   async function demo(kind) {
     const body = { kind: "pingone", offline: true, label: kind === "worker" ? "Mock demo (viewer/admin switch)" : "Mock demo (interactive sign-in)", region: "com", envId: DEMO_ENV_ID, endpointStyle: "api", auth: kind,
@@ -192,8 +194,8 @@ export default function Connections({ mode, conns, activeId, onSelect, reload, t
       )}
       {conns.length > 0 && <ul className="plain">{conns.map((c) => <ConnCard key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} onChange={reload} onTest={runTest} say={say} />)}</ul>}
       {active && <HealthCard conn={active} test={tests[active.id]} busy={testBusy === active.id} now={now} />}
-      {mode === "live" && <Setup onCreated={async (c) => { await reload(); onSelect(c.id); }} say={say} />}
-      {mode === "live" && <Wizard onCreated={async (c) => { await reload(); onSelect(c.id); }} say={say} />}
+      {mode === "live" && <Setup defaults={defaults} onCreated={async (c) => { await reload(); onSelect(c.id); }} say={say} />}
+      {mode === "live" && <Wizard defaults={defaults} onCreated={async (c) => { await reload(); onSelect(c.id); }} say={say} />}
     </>
   );
 }

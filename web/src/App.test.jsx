@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
-import { conn, fakeApi, LIVE_REFUSED, TOOLS } from "./test-helpers.js";
+import { conn, ENV, fakeApi, LIVE_REFUSED, TOOLS } from "./test-helpers.js";
 
 beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catch { /* none */ } delete document.documentElement.dataset.present; });
 const pressLive = async (user) => { await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); await user.selectOptions(screen.getByTestId("mode-select"), "real"); };
@@ -399,4 +399,26 @@ test("a failed test shows the error class and message in the modal", async () =>
   await waitFor(() => expect(within(dlg2).getByTestId("test-verdict")).toHaveTextContent(/did not work/));
   expect(within(dlg2).getByTestId("test-error")).toHaveTextContent("mcp_unreachable");
   expect(within(dlg2).getByTestId("test-message")).toHaveTextContent("ECONNREFUSED");
+});
+
+test("the default environment from worker.env is pre-filled in Setup and Add connection (typed values stay)", async () => {
+  fakeApi({ conns: [], defaults: { envId: ENV, region: "eu" } });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  const fields = await screen.findAllByLabelText(/^Environment id/);
+  expect(fields).toHaveLength(2); // Setup, then Add connection
+  await waitFor(() => fields.forEach((f) => expect(f).toHaveValue(ENV)));
+  expect(within(screen.getByTestId("setup")).getByLabelText("Region")).toHaveValue("eu");
+  await user.clear(fields[0]); await user.type(fields[0], "typed");
+  expect(fields[0]).toHaveValue("typed");
+});
+
+test("tool page: the environment argument is always filled, from the connection or else the default, under either spelling", async () => {
+  const tool = { name: "listThings", description: "List things", inputSchema: { type: "object", properties: { environment_id: { type: "string" } } }, class: "read", classSource: "name", area: "tenant" };
+  fakeApi({ conns: [conn({ kind: "custom", offline: false, envId: undefined, url: "http://127.0.0.1:9/mcp" })], tools: [tool], defaults: { envId: ENV, region: "com" } });
+  render(<App />);
+  await pressLive(userEvent.setup()); // a custom server is a Live connection
+  go("#/tool/listThings");
+  expect(await screen.findByLabelText(/environment_id/)).toHaveValue(ENV);
 });
