@@ -20,6 +20,8 @@ npm run talk-track   # regenerates docs/talk-track.md from the stories (a test f
 
 Docker (OrbStack, never Docker Desktop): `HOST_PORT=7815 docker compose up --build -d` (publishes `127.0.0.1:` only). Node 26 only.
 
+`install.sh` is the one-command install for another machine (the curl one-liner is in the README; `scripts/install.test.mjs` pins it). The compose file pins `name: mfa-admin-mcp-lab`, so testing it on a machine that already runs this lab recreates that lab's container unless you set `COMPOSE_PROJECT_NAME` to something else.
+
 ## Rules that bite here
 
 - **Mock / Live toggle in the header on every page**, the mode shown (`Mode: mock|live`) and the banner saying the same mode, presenter mode included. The page always opens in Mock (nothing about the mode is remembered). **Live is refused** unless the bind is loopback (a non-loopback `MFAADM_BIND` counts only with the image's `MFAADM_CONTAINER=1`; owner decision 2026-11-13: no env opt-in, the Real button works out of the box): `server/src/config.js` guards, `GET /api/info`, 403 `live_refused` in `app.js` on every network route for a non-mock connection. Do not add a path that lets Live bind wide. Never read a bare `MODE`, never `process.env.MODE`.

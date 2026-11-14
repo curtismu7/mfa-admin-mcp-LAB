@@ -18,6 +18,18 @@ Catalog: D132
 
 Product source: the family demo's PingOne MCP integration (the `pingone-mcp` skill) and PingOne's early-access MFA administration release notes. Only ideas, tool names and endpoint shapes were taken; the code here shares nothing with the family demo.
 
+## Install with one command
+
+On a machine with Docker running (OrbStack or Docker Desktop) or Node 26 or newer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/curtismu7/mfa-admin-mcp-LAB/main/install.sh | bash
+```
+
+It downloads this repo into `./mfa-admin-mcp-LAB` (no git needed). With Docker it builds and starts the container and waits for `/api/health`; without Docker it runs `npm ci && npm run build` and prints the `npm start` command. Then open `http://127.0.0.1:7815/`, which starts in Mock mode. Read [install.sh](install.sh) first if you prefer. Settings go on the `bash` side of the pipe: `HOST_PORT=7816` (Docker only), `MFAADM_DIR=<dir>`, `MFAADM_REF=<branch, tag or commit>`. Running it again updates the files in place and keeps saved connections.
+
+In the Docker form the compose file mounts the optional `~/.config/mfa-admin-mcp/worker.env` (see Settings file). If that file is missing, Docker would create a directory in its place, so the installer creates an empty file there instead (mode 600); an empty file means "not configured".
+
 ## Run from a clone
 
 Prerequisites: Node 26 or newer (`.nvmrc` says 26). Docker only for the Docker form.
