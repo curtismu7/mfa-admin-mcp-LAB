@@ -1,6 +1,6 @@
 # MFA Admin MCP LAB — Handoff
 
-**Date:** 2026-11-14 · **Owner:** curtismu7 · **Status: WORKING — one fix shipped today, see "Today's fix".**
+**Date:** 2026-11-14 · **Owner:** curtismu7 · **Status: WORKING — 17 PRs merged 2026-11-13→14 (see "Recent work"); sign-in wiring live-proven, final getMfaSettings call owner-run.**
 
 ---
 
@@ -13,12 +13,31 @@ behind a confirm gate; there is a metadata scan and an audit trail. Mock mode by
 Live mode is owner-run.
 
 - **Repo:** https://github.com/curtismu7/mfa-admin-mcp-LAB (dir name `mfa-admin-mcp-lab`)
-- **Submodule of:** https://github.com/curtismu7/AI-DEMO-Standalone (`standalone/mfa-admin-mcp-lab`, pinned at `84be1ce`)
+- **Submodule of:** https://github.com/curtismu7/AI-DEMO-Standalone (`standalone/mfa-admin-mcp-lab`, pin = the repo's current `main`; bump via the meta-repo)
 - **URL:** https://local.ping-devops.com:8443/mfa-admin-mcp/ (via the shared lab-proxy; NOT a bare loopback URL)
 - **Container:** `mfa-admin-mcp-lab-mfa-admin-mcp-lab-1`, port 7815
 - **Stack:** Node >=22, React (Vite) SPA + thin Express server, single compose service
 
-## Today's fix (2026-11-13/14) — asset routing
+## Recent work (2026-11-13→14, 17 PRs, all CI green)
+
+1. **Review fix pass** (#1): rule-21 `restart: unless-stopped`, catalog id D132 aligned everywhere, honest test counts (server 93 + web 88 + scripts 36), one-port 7815 range.
+2. **Live opt-in removed** (#2, owner decision): the Real button works out of the box; the bind (loopback or the container's `MFAADM_CONTAINER=1`) is the only guard. Mock stays the opening mode.
+3. **Interactive sign-in through the lab-proxy** (#3, #16): the redirect port follows the browser's origin (`X-Forwarded-Host`); https callback URIs accepted (PingOne requires https for non-localhost); `https://local.ping-devops.com:8443/api/oauth/callback` registered on the family admin app.
+4. **Working demos fixed** (#4–#7): container dials rewrite loopback → `host.docker.internal`; the netguard permits that alias; the banking preset now points at the shared `mcp-resource-server-LAB` on `127.0.0.1:8081` and mints a local test token (Bearer scheme added automatically); OpenSearch MCP comes up via AI-DEMO2's `--profile mcpgw` on 9900.
+5. **Setup card — automatic tenant configuration** (#8–#10, #12, #14): paste nothing — the lab reads `~/.config/mfa-admin-mcp/worker.env` (0600, mounted read-only at `/config/worker.env`), verifies the environment via unauthenticated OIDC discovery, finds or creates the sign-in app, registers the callback (PUT-backs now PRESERVE `grantTypes`/`responseTypes` — omitting them nullifies them on PingOne), and saves the interactive connection. Live-proven against env `01d89b06…` (reused "Demo AI App - Admin Login").
+6. **Test connection modal** (#13): results show in the shared FloatingDialog (verdict + tool count + class breakdown, or error class + message + hint). Only button-pressed tests open it.
+7. **Fill-from-server suggestions** (#17): suggestable fields (`index*`, `userId/user`, `environmentId`) get a **Fill from server** button backed by `POST /api/connections/:id/suggest` — it finds a read-only lookup tool in the connection's catalog, runs it through the gate, and offers up to 50 values in a filterable datalist. `environmentId` is auto-prefilled from the connection. The Tools page explains when a list is empty (interactive connection not signed in).
+8. **PingOne app repairs done live** (owner-approved): grants restored (TOKEN_EXCHANGE/REFRESH_TOKEN/AUTHORIZATION_CODE + responseTypes CODE after nullification), 16 redirect URIs, group restriction removed (access_denied for non-group users; role gating belongs to the signed-in user at the MCP server).
+
+## Asset routing — superseding note
+
+The `base: "/mfa-admin-mcp/"` fix below solved the wrong-tab problem but broke direct
+serving (the e2e proved a blank page: the html pointed at `/mfa-admin-mcp/assets` on an
+origin serving `/`). **The current build uses `base: "./"`** (relative), which is correct
+at `/`, under the lab-proxy's `/mfa-admin-mcp/`, and direct on :7815. The e2e also probes
+for a free port pair now — 7816 is held by `workload-identity-lab` on this machine.
+
+## Today's fix (2026-11-13/14) — asset routing (historical)
 
 **Symptom:** MFA Admin MCP LAB and the Demo Shelf both "opened" as the same app.
 
