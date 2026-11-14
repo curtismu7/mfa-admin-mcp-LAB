@@ -41,9 +41,10 @@ fs.rmSync(shots, { recursive: true, force: true });
 fs.mkdirSync(shots, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM || undefined });
+let page = null;
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
-  const page = await ctx.newPage();
+  page = await ctx.newPage();
   const shot = (name) => page.screenshot({ path: path.join(shots, `${name}.png`), fullPage: true });
   const external = []; const bodies = []; const errors = [];
   page.on('request', (r) => { const u = new URL(r.url()); if (!/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
@@ -322,8 +323,11 @@ try {
 } catch (e) {
   console.error('E2E CRASHED:', e?.message || e);
   try {
+    if (!page) throw new Error('no page');
     console.error('page url:', page.url());
-    console.error('page body (first 600):', (await page.content()).slice(0, 600));
+    console.error('page body (first 900):', (await page.content()).slice(0, 900));
+    await page.screenshot({ path: path.join(shots, 'crash.png'), fullPage: true }).catch(() => {});
+    console.error('console errors so far:', JSON.stringify(errors).slice(0, 500));
     const h = await fetch(`${base}/api/health`); console.error('main health:', h.status, (await h.text()).slice(0, 200));
     const h2 = await fetch(`${base}/`); console.error('index:', h2.status, (await h2.text()).slice(0, 300));
   } catch (e2) { console.error('diagnostics failed:', e2?.message); }
