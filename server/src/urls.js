@@ -14,8 +14,14 @@ const ENV_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const validRegion = (r, other = false) => VERIFIED_REGIONS.includes(String(r)) || (other === true && REGION_RE.test(String(r)));
 export const validEnvId = (e) => ENV_RE.test(String(e));
 
-export function asBase({ region, envId, offlineBase }) {
-  return offlineBase ? `${offlineBase}/${envId}/as` : `https://auth.pingone.${region}/${envId}/as`;
+export function asBase({ region, envId, offlineBase, idp, idpBaseUrl }) {
+  if (offlineBase) return `${offlineBase}/${envId}/as`;
+  // PingFederate: standard PF endpoint paths, base URL supplied per connection (no region/envId splicing).
+  if (idp === 'pf') {
+    if (idpBaseUrl) return `${String(idpBaseUrl).replace(/\/+$/, '')}/as`;
+    return `https://pingfederate.${region}/${envId}/as`; // conventional default; override with idpBaseUrl when PF lives elsewhere
+  }
+  return `https://auth.pingone.${region}/${envId}/as`;
 }
 export function mcpUrl({ region, envId, endpointStyle, offlineBase }) {
   if (offlineBase) return `${offlineBase}/mcp/${envId}`;
@@ -37,7 +43,7 @@ export function liveHosts(conn, { container = process.env.MFAADM_CONTAINER === '
       return alias ? [n, alias] : [n];
     } catch { return []; }
   };
-  if (conn.kind === 'pingone') return hosts(`https://auth.pingone.${conn.region}`).concat(hosts(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })));
+  if (conn.kind === 'pingone') return hosts(asBase(conn)).concat(hosts(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })));
   return hosts(conn.url);
 }
 

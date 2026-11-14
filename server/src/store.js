@@ -46,6 +46,18 @@ export function createStore({ dir }) {
       if (!validEnvId(rec.envId)) throw new Error('envId must be your PingOne environment id (a UUID)');
       rec.auth = b.auth === 'interactive' ? 'interactive' : 'worker';
       rec.endpointStyle = b.endpointStyle === 'mcp-host' ? 'mcp-host' : 'api';
+      // Which authorization server signs the tokens: PingOne (default) or a PingFederate instance.
+      // PF is only meaningful for interactive sign-in (it must run an OAuth app for this tool's PKCE flow).
+      rec.idp = b.idp === 'pf' ? 'pf' : 'pingone';
+      if (rec.idp === 'pf') {
+        rec.idpBaseUrl = str(b.idpBaseUrl, 300);
+        // optional: when set it must be a clean https (or loopback http) base; the /as suffix is appended by urls.asBase
+        if (rec.idpBaseUrl) {
+          let bUrl; try { bUrl = new URL(rec.idpBaseUrl); } catch { bUrl = null; }
+          const ok = bUrl && ((bUrl.protocol === 'https:') || (bUrl.protocol === 'http:' && isLoopbackHost(bUrl.hostname)));
+          if (!ok || bUrl.username || bUrl.password) throw new Error('idpBaseUrl must be an https URL (http only for a loopback address), without credentials');
+        }
+      }
       rec.clientId = str(b.clientId, 120);
       if (!rec.clientId) throw new Error('clientId is required');
       if (rec.auth === 'worker') {

@@ -27,7 +27,7 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
   const tokens = new Map();   // connId -> { accessToken, refreshToken, expiresAt, sub }
   const pending = new Map();  // state -> { connId, verifier, nonce, redirectUri, at }
 
-  const baseOf = (conn) => asBase({ region: conn.region, envId: conn.envId, offlineBase: resolveBase(conn) });
+  const baseOf = (conn) => asBase({ region: conn.region, envId: conn.envId, offlineBase: resolveBase(conn), idp: conn.idp, idpBaseUrl: conn.idpBaseUrl });
 
   async function tokenRequest(conn, params, { basic } = {}) {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
@@ -106,8 +106,10 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
     try { jwks = await (await fetchImpl(`${baseOf(conn)}/jwks`, { redirect: 'manual', signal: AbortSignal.timeout(15_000) })).json(); }
     catch { throw authError('jwks_unavailable', 'could not fetch the signing keys'); }
     const jwk = (jwks.keys || []).find((k) => k.kid === header.kid) || (jwks.keys || [])[0];
-    if (header.alg !== 'RS256' || !jwk) throw authError('bad_id_token', 'id_token is not RS256 or has no matching key');
-    const ok = crypto.createVerify('RSA-SHA256').update(signed).verify(crypto.createPublicKey({ key: jwk, format: 'jwk' }), sig);
+    // PingOne issues RS256; PingFederate commonly issues other algorithms (ES256 in our lab mock, RS or ES in real deployments).
+    // Accept any Node-supported algorithm whose key the JWKS publishes; the signature check itself stays mandatory.
+    if (!jwk) throw authError('bad_id_token', 'id_token has no matching key in the JWKS');
+    const ok = crypto.createVerify(header.alg === 'ES256' ? 'SHA256' : 'RSA-SHA256').update(signed).verify(crypto.createPublicKey({ key: jwk, format: 'jwk' }), sig);
     if (!ok) throw authError('bad_id_token', 'id_token signature does not verify');
     if (claims.iss !== baseOf(conn)) throw authError('iss_mismatch', 'id_token issuer is not this environment');
     if (![].concat(claims.aud).includes(conn.clientId)) throw authError('aud_mismatch', 'id_token audience is not this client');

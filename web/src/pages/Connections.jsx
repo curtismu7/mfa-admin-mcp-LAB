@@ -6,7 +6,7 @@ import { DEMO_ENV_ID, redirectUriFor } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
 
 const REGIONS = ["com", "eu", "asia", "ca"];
-const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", auth: "worker", endpointStyle: "api", clientId: "", clientSecret: "", tokenAuthMethod: "basic", url: "", authHeader: "Authorization", token: "" };
+const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", auth: "worker", endpointStyle: "api", idp: "pingone", idpBaseUrl: "", clientId: "", clientSecret: "", tokenAuthMethod: "basic", url: "", authHeader: "Authorization", token: "" };
 
 function Field({ label, children, hint }) {
   return <label className="field">{label}{children}{hint && <small>{hint}</small>}</label>;
@@ -23,7 +23,7 @@ function Wizard({ onCreated, say }) {
   async function submit(e) {
     e.preventDefault(); setErr("");
     const body = f.kind === "pingone"
-      ? { kind: "pingone", label: f.label, region: f.region, envId: f.envId, auth: f.auth, endpointStyle: f.endpointStyle, clientId: f.clientId, ...(f.auth === "worker" ? { clientSecret: f.clientSecret, tokenAuthMethod: f.tokenAuthMethod } : { redirectUri: uri }) }
+      ? { kind: "pingone", label: f.label, region: f.region, envId: f.envId, auth: f.auth, endpointStyle: f.endpointStyle, idp: f.idp, ...(f.idp === "pf" ? { idpBaseUrl: f.idpBaseUrl } : {}), clientId: f.clientId, ...(f.auth === "worker" ? { clientSecret: f.clientSecret, tokenAuthMethod: f.tokenAuthMethod } : { redirectUri: uri }) }
       : { kind: f.kind, label: f.label, url: f.url, ...(f.token ? { authHeader: f.authHeader, token: f.token } : {}) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { setErr(r.json?.message || "Could not save the connection."); return; }
@@ -52,6 +52,19 @@ function Wizard({ onCreated, say }) {
               <input value={f.envId} onChange={set("envId")} required spellCheck="false" autoComplete="off" />
             </Field>
           </div>
+          <fieldset className="seg-fs"><legend>Authorization server</legend>
+            <p className="hint" data-testid="idp-hint">
+              Who signs the tokens this connection uses. <strong>PingOne</strong> (the default): PingOne's hosted authorization server issues the access and id tokens.
+              <strong> PingFederate</strong>: an OAuth application on your own PingFederate instance runs the interactive sign-in (authorization code + PKCE) instead; the MCP endpoint stays the PingOne one unless you also change it.
+            </p>
+            <label><input type="radio" name="idp" checked={f.idp === "pingone"} onChange={() => setF({ ...f, idp: "pingone" })} /> PingOne authorization server (default)</label>
+            <label><input type="radio" name="idp" checked={f.idp === "pf"} onChange={() => setF({ ...f, idp: "pf" })} /> PingFederate (your own instance, interactive sign-in)</label>
+            {f.idp === "pf" && (
+              <Field label="PingFederate base URL" hint="e.g. https://pingfederate.example.com — /as/token.oauth2, /as/authorization.oauth2 and /pf/JWKS are derived from it. Leave empty to use https://pingfederate.&#60;region&#62;/&#60;envId&#62;.">
+                <input value={f.idpBaseUrl} onChange={set("idpBaseUrl")} placeholder="https://pingfederate.example.com" spellCheck="false" autoComplete="off" />
+              </Field>
+            )}
+          </fieldset>
           <fieldset className="seg-fs"><legend>Authentication</legend>
             <p className="hint" data-testid="worker-unverified">UNVERIFIED: sources disagree on whether the hosted PingOne MCP server accepts a worker (client_credentials) token. One source reports a 401 audience mismatch, the pingone-mcp skill says it is supported. If it is rejected, use interactive sign-in. See docs/live-checks.md item 2.</p>
             <label><input type="radio" name="auth" checked={f.auth === "worker"} onChange={() => setF({ ...f, auth: "worker" })} /> Worker application (client_credentials, no human)</label>
@@ -118,7 +131,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         <button type="button" data-testid="test-conn" onClick={() => onTest(c.id)}>Test connection</button>
         {c.kind === "pingone" && c.auth === "interactive" && (st.signedIn
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
-          : <button type="button" onClick={signIn}>Sign in</button>)}
+          : <button type="button" onClick={signIn} title={c.idp === "pf" ? "Interactive sign-in at your PingFederate instance (authorization code + PKCE)" : "Interactive sign-in at PingOne's authorization server (authorization code + PKCE)"}>{c.idp === "pf" ? "Sign in (PingFederate)" : "Sign in (PingOne)"}</button>)}
         {role && c.auth === "worker" && (
           <span className="seg" role="group" aria-label="Demo role">
             {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id, { modal: false }))}>{r}</button>)}
