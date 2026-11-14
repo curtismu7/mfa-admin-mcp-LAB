@@ -67,7 +67,7 @@ function Fields({ schema, args, setArgs, conn }) {
 export default function Tool({ conn, tools, name }) {
   const tool = (tools || []).find((t) => t.name === name);
   const { present } = usePresent();
-  const initial = useMemo(() => (conn?.kind === "pingone" && tool?.inputSchema?.properties?.environmentId ? { environmentId: conn.envId } : {}), [conn, tool]);
+  const initial = useMemo(() => (tool?.inputSchema?.properties?.environmentId && conn?.envId ? { environmentId: conn.envId } : {}), [conn, tool]);
   const [args, setArgs] = useState(initial);
   const [mode, setMode] = useState("form");
   const [text, setText] = useState("{}");

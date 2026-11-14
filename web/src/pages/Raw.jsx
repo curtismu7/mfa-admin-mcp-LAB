@@ -6,9 +6,6 @@ import { useGatedCall } from "../components/useGatedCall.js";
 
 const FREE = ["initialize", "ping", "tools/list", "resources/list", "resources/read", "resources/templates/list", "prompts/list", "prompts/get"];
 
-// Mock params used when the server's tool list is empty or unreachable — works in mock and live mode.
-const MOCK_PARAMS = { name: "getMfaSettings", arguments: { environmentId: "11111111-2222-4333-8444-555555555555" } };
-
 export default function Raw({ conn }) {
   const [method, setMethod] = useState("tools/list");
   const [params, setParams] = useState("{}");
@@ -22,8 +19,8 @@ export default function Raw({ conn }) {
     const r = await api.get(`/api/connections/${conn.id}/tools`);
     const first = r.ok && Array.isArray(r.json.tools) ? r.json.tools[0] : null;
     const p = first
-      ? { name: first.name, arguments: {} }
-      : MOCK_PARAMS;
+      ? { name: first.name, arguments: first.inputSchema?.properties?.environmentId && conn.envId ? { environmentId: conn.envId } : {} }
+      : { name: "getMfaSettings", arguments: { environmentId: conn.envId || "11111111-2222-4333-8444-555555555555" } };
     setFillNote(first ? `Filled with "${first.name}", the first tool the server returned (${r.json.tools.length} tools).` : "No tools returned — filled with a mock example.");
     setParams(JSON.stringify(p, null, 2));
   }
