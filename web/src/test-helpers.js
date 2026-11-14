@@ -22,7 +22,7 @@ export const conn = (o = {}) => ({ id: "c1", kind: "pingone", label: "Mock demo"
 // A tiny fake of this app's API. `calls` records every request; handlers can be overridden per test.
 export const LIVE_OK = { available: true, failed: [], needs: [] };
 export const LIVE_REFUSED = { available: false, failed: ["loopback-bind"], needs: ["the server must be bound to loopback"] };
-export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK } = {}) {
+export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK, defaults = { envId: null, region: null } } = {}) {
   const state = { conns: structuredClone(conns), calls: [], audit };
   const json = (status, body) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
   let serverMode = "mock";
@@ -37,6 +37,7 @@ export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers 
         if (body.source === "real" && !live.available) return json(409, { error: "real_not_available", message: "Live is refused: loopback-bind." });
         serverMode = body.source; return json(200, { source: serverMode, realAvailable: live.available, realReason: null });
       case "POST /api/reset": return json(200, { ok: true, cleared: ["audit"], kept: ["connections"] });
+      case "GET /api/setup/defaults": return json(200, defaults);
       case "GET /api/connections": return json(200, { connections: state.conns });
       case "POST /api/connections": { const c = conn({ id: "c2", ...body, offline: body.offline === true, clientSecret: body.clientSecret ? "set" : undefined, allowWrites: false, auth_status: {} }); state.conns.push(c); return json(201, c); }
       case "POST /api/connections/:id/test": return json(200, { ok: true, toolCount: tools.length, byClass: { read: 5, write: 2, destructive: 1 }, hint: "A short list usually means missing admin roles.", fixture: "illustrative sample, not a recording" });
