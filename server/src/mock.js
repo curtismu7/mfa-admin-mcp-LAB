@@ -217,6 +217,7 @@ export function createMock({ now = Date.now } = {}) {
   return {
     config, tenant, clients, tokens, refreshes,
     get base() { return base; },
+    handle,
     revoke: (access) => tokens.delete(access),
     // Reset: the fake tenant goes back to its starting records and every token, code and recorded call is dropped.
     reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); config.calls.length = 0; },

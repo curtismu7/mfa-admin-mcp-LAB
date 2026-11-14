@@ -310,14 +310,18 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   // Host is the proxy's upstream name (:7815), but the browser — and so the redirect — is on the
   // proxy's :8443. X-Forwarded-Host carries the browser's host when a proxy is in front.
   const browserPort = (req) => String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim().split(':').pop();
-  app.post('/api/connections/:id/login/start', h((req, res, conn) => {
+  app.post('/api/connections/:id/login/start', h(async (req, res, conn) => {
+    if (isMock(conn)) await ensureMock(); // the authorize URL points at the mock's own port; without this the first sign-in after a restart lands on a dead port
     let u; try { u = new URL(conn.redirectUri); } catch { u = null; }
     const hostPort = browserPort(req);
     const schemeOk = u && ((u.protocol === 'http:' && isLoopbackHost(u.hostname)) || u.protocol === 'https:');
     if (!u || !schemeOk || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
       return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be http://localhost:${hostPort}/api/oauth/callback (or /callback), exactly as registered on your OAuth application.` });
     }
-    res.json({ authorizeUrl: auth.startLogin(conn, { idp: req.body?.idp, returnTo: safeReturnTo(req.body?.returnTo) }).authorizeUrl });
+    const started = auth.startLogin(conn, { idp: req.body?.idp, returnTo: safeReturnTo(req.body?.returnTo) });
+    const mb = browserMockBase(conn);
+    if (mb) started.authorizeUrl = started.authorizeUrl.replace(`${offlineBase(conn)}/${conn.envId}/as`, mb);
+    res.json({ authorizeUrl: started.authorizeUrl });
   }));
   const callback = async (req, res) => {
     const at = `${browserOrigin(req, lab)}${req.path}`; // the URL the browser used, which behind the lab-proxy is not Host
@@ -336,6 +340,19 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
 
   app.get('/api/audit', (_req, res) => res.json({ entries: audit.recent() }));
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
+
+  // The mock's own port lives inside the container, so a browser cannot reach the authorize URL directly.
+  // Same-origin pass-through: everything under /__mock/ is served by the in-process mock, and offline
+  // connections get their authorize URL rewritten to this path (browserMockBase below). GET only, and
+  // only the mock's AS endpoints (authorize, jwks) ever need it — the token redemption stays server-side.
+  const BROWSER_MOCK_PREFIX = '/__mock';
+  app.get(`${BROWSER_MOCK_PREFIX}/*`, h(async (req, res) => {
+    await ensureMock();
+    // handler wants (req, res) with the real URL; the express path is /__mock/<env>/as/authorize...
+    req.url = req.originalUrl.slice(BROWSER_MOCK_PREFIX.length);
+    await theMock.handle(req, res);
+  }, { noNetwork: true }));
+  const browserMockBase = (conn) => (process.env.MFAADM_CONTAINER === '1' ? `${BROWSER_MOCK_PREFIX}/${conn.envId}/as` : null);
 
   if (fs.existsSync(webDist)) { app.use(express.static(webDist)); app.get('*', (req, res, next) => (req.path.startsWith('/api/') ? next() : res.sendFile('index.html', { root: webDist }))); }
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
