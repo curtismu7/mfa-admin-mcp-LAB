@@ -319,6 +319,15 @@ try {
   check(!/mock-at-|mock-rt-|demo-secret/.test(all), 'no token or client secret in any API body or the page');
   check(external.length === 0, `the browser made no non-loopback request (${external.length})`);
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.slice(0, 3).join(' | ')}` : ''}`);
+} catch (e) {
+  console.error('E2E CRASHED:', e?.message || e);
+  try {
+    console.error('page url:', page.url());
+    console.error('page body (first 600):', (await page.content()).slice(0, 600));
+    const h = await fetch(`${base}/api/health`); console.error('main health:', h.status, (await h.text()).slice(0, 200));
+    const h2 = await fetch(`${base}/`); console.error('index:', h2.status, (await h2.text()).slice(0, 300));
+  } catch (e2) { console.error('diagnostics failed:', e2?.message); }
+  failures++;
 } finally {
   await browser.close();
   server.kill('SIGTERM');
