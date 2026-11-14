@@ -91,6 +91,17 @@ Two meta-repo changes landed the same day (relevant because they explain URL/pro
   PingOne hosted MCP) are configured in-app under Connections; secrets are write-only,
   stored server-side on this machine.
 
+## Install on another machine
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/curtismu7/mfa-admin-mcp-LAB/main/install.sh | bash
+```
+
+Needs Docker running (OrbStack or Docker Desktop) or Node 26+. It unpacks into `./mfa-admin-mcp-LAB`,
+starts the lab in Mock mode and prints the URL, `http://127.0.0.1:7815/`. A machine without this Mac's
+lab-proxy has no `local.ping-devops.com:8443` address; use the loopback URL there. Options and details:
+README, "Install with one command".
+
 ## Architecture notes
 
 - One service; `server/src` is the Express API + MCP client, `web/src` the React SPA.
