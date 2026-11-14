@@ -16,7 +16,10 @@ import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shots = path.join(root, '.data', 'e2e-screenshots');
-const port = Number(process.env.E2E_PORT) || 7816;
+// 7816+ may belong to other family labs (one port per app); probe upward for a free pair.
+const portInUse = async (p) => { try { await fetch(`http://127.0.0.1:${p}/api/health`, { signal: AbortSignal.timeout(500) }); return true; } catch { return false; } };
+let port = Number(process.env.E2E_PORT) || 7816;
+while (await portInUse(port)) port += 2; // keep parity: the refused twin takes port+1
 const base = `http://localhost:${port}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
