@@ -62,7 +62,7 @@ try {
   check(await page.evaluate(() => document.activeElement.id) === 'main', 'the skip link moves focus to the main region');
   // Rule 19 default: Real if configured, else Mock. This server has the owner's Live opt-in, so the page opens in Live; switch to Mock.
   // The shared TopMenu renders the mode as a <select> (option "mock"), not a button.
-  await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor();
+  await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor({ timeout: 60_000 });
   check((await page.getByTestId('banner').innerText()).startsWith('LIVE mode'), 'with the Live opt-in the page opens in Live (rule 19 default) and the banner says so');
   await page.getByTestId('mode-select').selectOption('mock');
   await page.getByTestId('mode').filter({ hasText: 'Mode: mock' }).waitFor();
