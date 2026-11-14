@@ -51,7 +51,8 @@ export function createStore({ dir }) {
       rec.idp = b.idp === 'pf' ? 'pf' : 'pingone';
       if (rec.idp === 'pf') {
         rec.idpBaseUrl = str(b.idpBaseUrl, 300);
-        // optional: when set it must be a clean https (or loopback http) base; the /as suffix is appended by urls.asBase
+        // required unless the connection is the offline mock: a clean https (or loopback http) base; the /as suffix is appended by urls.asBase
+        if (!rec.idpBaseUrl && !rec.offline) throw new Error('PingFederate needs its base URL (idpBaseUrl), for example https://pingfederate.example.com');
         if (rec.idpBaseUrl) {
           let bUrl; try { bUrl = new URL(rec.idpBaseUrl); } catch { bUrl = null; }
           const ok = bUrl && ((bUrl.protocol === 'https:') || (bUrl.protocol === 'http:' && isLoopbackHost(bUrl.hostname)));

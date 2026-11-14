@@ -80,7 +80,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     const secrets = conn ? secretsFor(conn) : auth.allSecrets();
     const message = scrub(err?.message || 'error', secrets).slice(0, 300);
     const code = err?.code || 'internal_error';
-    const status = code === 'login_required' ? 401 : code === 'mcp_timeout' ? 504 : /^(mcp_|token_|jwks_)/.test(code) ? 502 : code === 'bad_request' ? 400 : 500;
+    const status = code === 'login_required' ? 401 : code === 'mcp_timeout' ? 504 : /^(mcp_|token_|jwks_)/.test(code) ? 502 : code === 'bad_request' || code === 'pf_not_configured' ? 400 : 500;
     const body = { error: String(code), message: status === 500 && !err?.code ? 'internal error' : message };
     if (err?.httpStatus) body.upstreamStatus = err.httpStatus;
     return res.status(status).json(body);

@@ -163,6 +163,10 @@ export function createMock({ now = Date.now } = {}) {
   async function handle(req, res) {
     const url = new URL(req.url, base || 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
+    // PingFederate names the same three endpoints differently; the mock answers both so the PF sign-in can be shown in Mock mode.
+    if (parts[1] === 'as' && parts[2] === 'authorization.oauth2') parts[2] = 'authorize';
+    if (parts[1] === 'as' && parts[2] === 'token.oauth2') parts[2] = 'token';
+    if (parts[1] === 'pf' && parts[2] === 'JWKS') { parts[1] = 'as'; parts[2] = 'jwks'; }
     if (parts[0] === 'mcp' && req.method === 'POST') {
       const tok = tokens.get(String(req.headers.authorization || '').replace(/^Bearer /, ''));
       if (!tok || tok.exp <= now()) return send(res, 401, { error: 'Invalid authentication' });

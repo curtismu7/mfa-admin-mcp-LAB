@@ -14,6 +14,10 @@ const MARGIN_MS = 60_000;
 const STATE_TTL_MS = 5 * 60_000;
 const b64u = (b) => Buffer.from(b).toString('base64url');
 export const pkceChallenge = (verifier) => crypto.createHash('sha256').update(verifier).digest('base64url');
+const SIGNATURE_ALGS = {
+  RS256: { digest: 'RSA-SHA256' }, RS384: { digest: 'RSA-SHA384' }, RS512: { digest: 'RSA-SHA512' },
+  ES256: { digest: 'SHA256', ec: true }, ES384: { digest: 'SHA384', ec: true }, ES512: { digest: 'SHA512', ec: true },
+};
 export function authError(code, message) { return Object.assign(new Error(message), { code }); }
 
 function decodeJwt(t) {
@@ -101,11 +105,12 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
 
   function startLogin(conn, { idp, returnTo = '/' } = {}) {
     if (conn.kind !== 'pingone' || conn.auth !== 'interactive') throw authError('not_interactive', 'this connection does not use interactive sign-in');
+    const authorizeEndpoint = ep({ ...conn, idp: idp === 'pf' ? 'pf' : conn.idp }, 'authorize'); // throws pf_not_configured before any state exists
     for (const [s, p] of pending) if (now() - p.at > stateTtlMs) pending.delete(s);
     const state = b64u(crypto.randomBytes(24)); const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
     pending.set(state, { connId: conn.id, verifier, nonce, redirectUri: conn.redirectUri, returnTo, at: now(), idp: idp === 'pf' ? 'pf' : (conn.idp || 'pingone') });
     const q = new URLSearchParams({ response_type: 'code', client_id: conn.clientId, redirect_uri: conn.redirectUri, scope: 'openid offline_access', state, nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256' });
-    return { authorizeUrl: `${ep({ ...conn, idp: idp === 'pf' ? 'pf' : conn.idp }, 'authorize')}?${q}`, state };
+    return { authorizeUrl: `${authorizeEndpoint}?${q}`, state };
   }
 
   async function verifyIdToken(conn, idToken, nonce, { idp } = {}) {
@@ -115,10 +120,13 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
     try { jwks = await (await fetchImpl(ep(eff, 'jwks'), { redirect: 'manual', signal: AbortSignal.timeout(15_000) })).json(); }
     catch { throw authError('jwks_unavailable', 'could not fetch the signing keys'); }
     const jwk = (jwks.keys || []).find((k) => k.kid === header.kid) || (jwks.keys || [])[0];
-    // PingOne issues RS256; PingFederate commonly issues other algorithms (ES256 in our lab mock, RS or ES in real deployments).
-    // Accept any Node-supported algorithm whose key the JWKS publishes; the signature check itself stays mandatory.
+    // PingOne issues RS256; PingFederate can issue RS or ES. A JWS ES* signature is the raw r||s pair (IEEE P1363), not the DER form Node
+    // expects by default, so EC algorithms must say so or no genuine token would ever verify. Anything else, including "none", is refused.
     if (!jwk) throw authError('bad_id_token', 'id_token has no matching key in the JWKS');
-    const ok = crypto.createVerify(header.alg === 'ES256' ? 'SHA256' : 'RSA-SHA256').update(signed).verify(crypto.createPublicKey({ key: jwk, format: 'jwk' }), sig);
+    const alg = SIGNATURE_ALGS[header.alg];
+    if (!alg) throw authError('bad_id_token', `id_token algorithm ${JSON.stringify(String(header.alg).slice(0, 12))} is not supported`);
+    let ok = false;
+    try { ok = crypto.createVerify(alg.digest).update(signed).verify({ key: crypto.createPublicKey({ key: jwk, format: 'jwk' }), ...(alg.ec ? { dsaEncoding: 'ieee-p1363' } : {}) }, sig); } catch { ok = false; } // a malformed signature or key throws; it is a refusal, not a crash
     if (!ok) throw authError('bad_id_token', 'id_token signature does not verify');
     if (claims.iss !== baseOf(eff)) throw authError('iss_mismatch', 'id_token issuer is not this environment');
     if (![].concat(claims.aud).includes(conn.clientId)) throw authError('aud_mismatch', 'id_token audience is not this client');

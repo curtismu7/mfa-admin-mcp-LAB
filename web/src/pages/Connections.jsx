@@ -62,8 +62,8 @@ function Wizard({ onCreated, say, defaults }) {
             <label><input type="radio" name="idp" checked={f.idp === "pingone"} onChange={() => setF({ ...f, idp: "pingone" })} /> PingOne authorization server (default)</label>
             <label><input type="radio" name="idp" checked={f.idp === "pf"} onChange={() => setF({ ...f, idp: "pf" })} /> PingFederate (your own instance, interactive sign-in)</label>
             {f.idp === "pf" && (
-              <Field label="PingFederate base URL" hint="e.g. https://pingfederate.example.com — /as/token.oauth2, /as/authorization.oauth2 and /pf/JWKS are derived from it. Leave empty to use https://pingfederate.&#60;region&#62;/&#60;envId&#62;.">
-                <input value={f.idpBaseUrl} onChange={set("idpBaseUrl")} placeholder="https://pingfederate.example.com" spellCheck="false" autoComplete="off" />
+              <Field label="PingFederate base URL" hint="Required, e.g. https://pingfederate.example.com — /as/token.oauth2, /as/authorization.oauth2 and /pf/JWKS are derived from it.">
+                <input value={f.idpBaseUrl} onChange={set("idpBaseUrl")} required placeholder="https://pingfederate.example.com" spellCheck="false" autoComplete="off" />
               </Field>
             )}
           </fieldset>
@@ -108,6 +108,8 @@ function Wizard({ onCreated, say, defaults }) {
   );
 }
 
+const PF_NEEDS = "PF login needs a PingFederate base URL: add a connection with Authorization server = PingFederate.";
+
 function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
   async function act(fn, msg) { const r = await fn(); if (!r.ok) say(r.json?.message || "That did not work."); else if (msg) say(msg); onChange(); return r; }
@@ -118,6 +120,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
     window.location.assign(r.json.authorizeUrl);
   }
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
+  const pfReady = c.offline === true || (c.idp === "pf" && Boolean(c.idpBaseUrl)); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
   const role = c.clientId === "admin-demo" ? "admin" : c.clientId === "viewer-demo" ? "viewer" : null;
   return (
     <li className="card" data-state={active ? "active" : undefined} data-testid="conn-card">
@@ -135,7 +138,9 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
           : <span className="row">
               <button type="button" onClick={() => signIn("pingone")} title="Interactive sign-in at PingOne's authorization server (authorization code + PKCE)">P1 login</button>
-              <button type="button" onClick={() => signIn("pf")} title="Interactive sign-in at your PingFederate instance (authorization code + PKCE). Configure the PF base URL in the connection wizard.">PF login</button>
+              <button type="button" data-testid="pf-login" disabled={!pfReady} onClick={() => signIn("pf")}
+                title={pfReady ? "Interactive sign-in at PingFederate (authorization code + PKCE)" : PF_NEEDS}>PF login</button>
+              {!pfReady && <small className="hint" data-testid="pf-hint">{PF_NEEDS}</small>}
             </span>)}
         {role && c.auth === "worker" && (
           <span className="seg" role="group" aria-label="Demo role">

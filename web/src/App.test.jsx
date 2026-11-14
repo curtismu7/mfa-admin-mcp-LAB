@@ -422,3 +422,23 @@ test("tool page: the environment argument is always filled, from the connection 
   go("#/tool/listThings");
   expect(await screen.findByLabelText(/environment_id/)).toHaveValue(ENV);
 });
+
+test("PF login is only offered where a PingFederate exists: the mock simulates one, a live connection needs its own base URL", async () => {
+  const inter = { auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } };
+  fakeApi({ conns: [
+    conn({ id: "c1", label: "Mock sign-in", ...inter }),
+    conn({ id: "c2", label: "Live PingOne", offline: false, ...inter }),
+    conn({ id: "c3", label: "Live PF", offline: false, idp: "pf", idpBaseUrl: "https://pingfederate.example.com", ...inter }),
+  ] });
+  const user = userEvent.setup();
+  render(<App />);
+  expect(await screen.findByTestId("pf-login")).toBeEnabled(); // the mock simulates PingFederate
+  expect(screen.queryByTestId("pf-hint")).toBeNull();
+  await pressLive(user);
+  await waitFor(() => expect(screen.getAllByTestId("conn-card")).toHaveLength(2));
+  const [plain, pf] = screen.getAllByTestId("conn-card");
+  expect(within(plain).getByTestId("pf-login")).toBeDisabled();
+  expect(within(plain).getByTestId("pf-hint")).toHaveTextContent(/PingFederate base URL/);
+  expect(within(pf).getByTestId("pf-login")).toBeEnabled();
+  expect(within(pf).queryByTestId("pf-hint")).toBeNull();
+});
