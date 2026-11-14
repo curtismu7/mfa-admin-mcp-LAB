@@ -16,7 +16,7 @@ Live mode is owner-run.
 - **Submodule of:** https://github.com/curtismu7/AI-DEMO-Standalone (`standalone/mfa-admin-mcp-lab`, pin = the repo's current `main`; bump via the meta-repo)
 - **URL:** https://local.ping-devops.com:8443/mfa-admin-mcp/ (via the shared lab-proxy; NOT a bare loopback URL)
 - **Container:** `mfa-admin-mcp-lab-mfa-admin-mcp-lab-1`, port 7815
-- **Stack:** Node >=22, React (Vite) SPA + thin Express server, single compose service
+- **Stack:** Node 26 only (`engines`, `.nvmrc`, Dockerfile and CI all pin it), React (Vite) SPA + thin Express server, single compose service
 
 ## Recent work (2026-11-13→14, 17 PRs, all CI green)
 
@@ -37,6 +37,13 @@ origin serving `/`). **The current build uses `base: "./"`** (relative), which i
 at `/`, under the lab-proxy's `/mfa-admin-mcp/`, and direct on :7815. The e2e also probes
 for a free port pair now — 7816 is held by `workload-identity-lab` on this machine.
 
+Checked 2026-11-14 against the running container: with the cookie set to `demo-shelf`, the
+lab's JS fetched through `/mfa-admin-mcp/assets/…` is byte-identical to the one served on
+raw `:7815`, so the wrong-tab bug stays fixed. Open the **trailing-slash** URL (the one the
+shelf links). The slashless `/mfa-admin-mcp` also works, but only because its own response
+sets the `lab=mfa-admin-mcp` cookie before `./assets/…` (which then resolves to `/assets/…`)
+is requested.
+
 ## Today's fix (2026-11-13/14) — asset routing (historical)
 
 **Symptom:** MFA Admin MCP LAB and the Demo Shelf both "opened" as the same app.
@@ -46,14 +53,20 @@ lab-proxy routes unmatched paths by the `lab` **cookie**, so the lab's JS/CSS re
 served from whichever lab the browser had last entered — usually the shelf. Both tabs then
 rendered the same bundle.
 
-**Fix:** `base: "/mfa-admin-mcp/"` in `web/vite.config.js` (commit `6d3170e`, plus a follow-up
-`84be1ce` re-vendoring TopMenu). Built dist and recreated the container; verified in a real
-browser: shelf tab and lab tab render as distinct apps regardless of cookie state.
+**Fix (first attempt, since replaced by `base: "./"` — see the superseding note above):**
+`base: "/mfa-admin-mcp/"` in `web/vite.config.js` (commit `6d3170e`; the TopMenu re-vendor
+that followed is `0ce669a` on main). Built dist and recreated the container; verified in a
+real browser: shelf tab and lab tab render as distinct apps regardless of cookie state.
 
 **Meta-repo pin bump:** `f7101f9` on `AI-DEMO-Standalone` main.
 
-**Lesson for all labs:** any SPA served through the lab-proxy MUST set Vite `base` to its
-sub-path (`/<lab-id>/`) or its absolute `/assets` fetches get routed to the wrong lab.
+**Lesson for all labs:** an SPA served through the lab-proxy must not fetch absolute
+`/assets/…` URLs: the proxy routes those by the `lab` cookie, so they can land on another lab.
+A fixed `base: "/<lab-id>/"` cures that but breaks direct serving on `/` (this lab's e2e
+caught it as a blank page). This lab uses the relative `base: "./"`, which works at `/`, under
+the proxy prefix and on the raw port; it relies on hash routing (`parseHash` in
+`web/src/App.jsx`), so relative asset URLs stay valid on every page. Check a lab's routing
+and run its e2e before copying either setting.
 
 ## Related fix today — lab-proxy bare-root + reload
 
@@ -81,7 +94,8 @@ Two meta-repo changes landed the same day (relevant because they explain URL/pro
 ## Architecture notes
 
 - One service; `server/src` is the Express API + MCP client, `web/src` the React SPA.
-- The app serves `web/dist` at the `/mfa-admin-mcp/` base; Vite dev mode runs on 5202 with
+- The app serves `web/dist` at `/` with relative asset URLs (`base: "./"`), so the same build
+  also works under the lab-proxy's `/mfa-admin-mcp/` prefix; Vite dev mode runs on 5202 with
   `/api` proxied to 7815.
 - Connections model: each connection = MCP server URL + auth (worker token, interactive
   PKCE sign-in, or custom credential) + writes-allowed flag. The confirm gate refuses
