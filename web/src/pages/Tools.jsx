@@ -10,7 +10,7 @@ export function ClassBadge({ t }) {
   return <span className={`badge badge--${t.class}`} title={classWhy(t)} data-testid="class-badge">{t.class}</span>;
 }
 
-export default function Tools({ conn, tools, loading, error, test, testBusy, now }) {
+export default function Tools({ conn, tools, loading, error, test, testBusy, now, conns, onPick }) {
   const [q, setQ] = useState("");
   const [cls, setCls] = useState("all");
   const { present } = usePresent();
@@ -29,6 +29,15 @@ export default function Tools({ conn, tools, loading, error, test, testBusy, now
         <p className="notice" data-state="bad" data-testid="tools-signin">This connection is not signed in yet, so no tools from the server are listed. Open <a href="#/connections">Connections</a> and press <strong>Sign in</strong> (PingOne will ask for your MFA code), then come back here.</p>
       )}
       <HealthCard conn={conn} test={test} busy={testBusy} now={now} />
+      {conns?.length > 1 && (
+        <div className="card controls">
+          <label className="field">Show tools from
+            <select value={conn.id} onChange={(e) => onPick(e.target.value)} data-testid="tools-conn-picker">
+              {conns.map((c) => <option key={c.id} value={c.id}>{c.label}{c.offline ? " (mock demo)" : ""}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
       <ScanPanel key={conn.id} conn={conn} />
       <div className="card controls">
         <label className="field">Search<input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="name or description" /></label>
