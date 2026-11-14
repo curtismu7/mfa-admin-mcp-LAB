@@ -217,6 +217,8 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
       const tools = await listAnnotated(conn);
       const out = { ok: true, toolCount: tools.length, byClass: { read: 0, write: 0, destructive: 0 } };
       for (const t of tools) out.byClass[t.class]++;
+      // the tools themselves, for the result dialog: name and safety class only, sorted by name
+      out.tools = scrubJson(tools.map((t) => ({ name: t.name, class: t.class, classSource: t.classSource })).sort((a, b) => String(a.name).localeCompare(String(b.name))), secretsFor(conn));
       if (conn.kind === 'pingone') {
         out.expectedNote = 'A fully privileged Worker app is said to see about 60-70 tools (pingone-mcp skill; UNVERIFIED by this tool).';
         if (tools.length < 40) out.hint = HINT_SHORT;

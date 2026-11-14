@@ -442,3 +442,27 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
   expect(within(pf).getByTestId("pf-login")).toBeEnabled();
   expect(within(pf).queryByTestId("pf-hint")).toBeNull();
 });
+
+test("the Test connection dialog lists the actual tools grouped by safety class, with the totals", async () => {
+  const tools = [
+    { name: "listUsers", class: "read", classSource: "name" },
+    { name: "getMfaSettings", class: "read", classSource: "name" },
+    { name: "createFidoPolicy", class: "write", classSource: "name" },
+    { name: "<b>hostile</b>", class: "destructive", classSource: "unknown" },
+  ];
+  fakeApi({ conns: [conn({ offline: false, label: "Prod tenant" })], handlers: { "POST /api/connections/:id/test": (b, st, json) => json(200, { ok: true, toolCount: 4, byClass: { read: 2, write: 1, destructive: 1 }, tools }) } });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  await user.click(await screen.findByTestId("test-conn"));
+  const dlg = await screen.findByTestId("test-result");
+  const totals = await within(dlg).findByTestId("test-totals");
+  expect(totals).toHaveTextContent("Total 4: 2 read, 1 write, 1 destructive");
+  const read = within(dlg).getByTestId("test-tools-read");
+  expect(within(read).getByRole("heading")).toHaveTextContent("read (2)");
+  expect(within(read).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["listUsers read", "getMfaSettings read"]); // the order the server sent (sorted there)
+  expect(within(within(dlg).getByTestId("test-tools-write")).getByRole("heading")).toHaveTextContent("write (1)");
+  const destructive = within(dlg).getByTestId("test-tools-destructive");
+  expect(destructive).toHaveTextContent("<b>hostile</b>"); // shown as text
+  expect(destructive.querySelector("b")).toBeNull();
+});

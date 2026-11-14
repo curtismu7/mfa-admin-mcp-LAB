@@ -44,6 +44,16 @@ test('connections: validation, secrets write-only, file mode 600 in a 700 dir', 
   const cu = await s.call('POST', '/api/connections', { kind: 'custom', url: `${s.mock.base}/mcp/${ENV_ID}?k=SENTINEL-QUERY`, authHeader: 'Authorization', token: 'SENTINEL-CUSTOM-TOKEN' });
   assert.equal(cu.json.token, 'set'); assert.ok(!cu.text.includes('SENTINEL-CUSTOM-TOKEN') && !cu.text.includes('SENTINEL-QUERY'));
 });
+test('test connection: returns the tools it counted (name and class, sorted) and the totals match them', async () => {
+  const admin = await add({ clientId: 'admin-app' });
+  const r = (await s.call('POST', `/api/connections/${admin.id}/test`)).json;
+  assert.equal(r.ok, true);
+  assert.equal(r.tools.length, r.toolCount);
+  assert.deepEqual(r.tools.map((t) => t.name), [...r.tools.map((t) => t.name)].sort((a, b) => a.localeCompare(b)));
+  for (const cls of ['read', 'write', 'destructive']) assert.equal(r.tools.filter((t) => t.class === cls).length, r.byClass[cls], cls);
+  assert.deepEqual(Object.keys(r.tools[0]).sort(), ['class', 'classSource', 'name'], 'only what the dialog shows');
+  assert.equal(r.tools.find((t) => t.name === 'deleteUser').class, 'destructive');
+});
 test('tools list: classification and area grouping; viewer vs admin roles; SSE mode', async () => {
   const admin = await add({ clientId: 'admin-app' }); const viewer = await add({ clientId: 'viewer-app' });
   const a = (await s.call('GET', `/api/connections/${admin.id}/tools`)).json;

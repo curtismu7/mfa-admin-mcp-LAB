@@ -77,6 +77,10 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-hei
 .untrusted { white-space: pre-wrap; overflow-wrap: anywhere; }
 .untrusted--block { display: block; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0; max-height: 22rem; overflow: auto; font-size: 12px; }
 .scroll { overflow-x: auto; }
+.test-tools { max-height: 18rem; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; margin: 8px 0; }
+.test-tools h3 { margin: 8px 0 4px; font-size: 14px; }
+.test-tools ul { list-style: none; margin: 0 0 4px; padding: 0; }
+.test-tools li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 

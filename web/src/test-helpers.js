@@ -40,7 +40,7 @@ export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers 
       case "GET /api/setup/defaults": return json(200, defaults);
       case "GET /api/connections": return json(200, { connections: state.conns });
       case "POST /api/connections": { const c = conn({ id: "c2", ...body, offline: body.offline === true, clientSecret: body.clientSecret ? "set" : undefined, allowWrites: false, auth_status: {} }); state.conns.push(c); return json(201, c); }
-      case "POST /api/connections/:id/test": return json(200, { ok: true, toolCount: tools.length, byClass: { read: 5, write: 2, destructive: 1 }, hint: "A short list usually means missing admin roles.", fixture: "illustrative sample, not a recording" });
+      case "POST /api/connections/:id/test": return json(200, { ok: true, toolCount: tools.length, byClass: { read: 5, write: 2, destructive: 1 }, tools: tools.map((t) => ({ name: t.name, class: t.class, classSource: t.classSource })), hint: "A short list usually means missing admin roles.", fixture: "illustrative sample, not a recording" });
       case "GET /api/connections/:id/tools": return json(200, { count: tools.length, tools });
       case "POST /api/connections/:id/settings": state.conns[0].allowWrites = body.allowWrites; return json(200, state.conns[0]);
       case "GET /api/diagrams": return json(200, { diagrams: Object.values(DIAGRAMS).map((d) => ({ name: d.id, title: d.title })) });
