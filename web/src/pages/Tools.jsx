@@ -16,11 +16,18 @@ export default function Tools({ conn, tools, loading, error, test, testBusy, now
   const { present } = usePresent();
   const groups = useMemo(() => groupTools(tools || [], q, cls), [tools, q, cls]);
   if (!conn) return <><h1>Tools</h1><p>Select or add a connection first.</p></>;
+  const interactive = conn.auth === "interactive";
+  const signedIn = conn.auth_status?.signedIn === true;
+  const credential = conn.kind === "pingone" && conn.auth === "worker" ? conn.auth_status?.token != null || conn.clientSecret : conn.kind === "custom" ? true : interactive;
   const writesOff = !conn.allowWrites;
+  const needsSignIn = interactive && !signedIn;
   const total = (tools || []).length;
   return (
     <>
       <h1>Tools</h1>
+      {needsSignIn && (
+        <p className="notice" data-state="bad" data-testid="tools-signin">This connection is not signed in yet, so no tools from the server are listed. Open <a href="#/connections">Connections</a> and press <strong>Sign in</strong> (PingOne will ask for your MFA code), then come back here.</p>
+      )}
       <HealthCard conn={conn} test={test} busy={testBusy} now={now} />
       <ScanPanel key={conn.id} conn={conn} />
       <div className="card controls">

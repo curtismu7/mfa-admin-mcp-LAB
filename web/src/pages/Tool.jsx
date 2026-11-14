@@ -17,7 +17,36 @@ function coerce(type, text) {
   return text;
 }
 
-function Fields({ schema, args, setArgs }) {
+const SUGGESTABLE = /^(index(name)?|user(id)?|environmentId)$/i;
+
+// One suggestions list per field, loaded on demand from the connection's own read tools.
+function FieldWithSuggestions({ connId, k, p, args, put, hint, label, type }) {
+  const [values, setValues] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const listId = `suggest-${connId}-${k}`;
+  async function load() {
+    setBusy(true); setErr("");
+    const r = await api.post(`/api/connections/${connId}/suggest`, { field: k });
+    setBusy(false);
+    if (!r.ok) { setErr(r.json?.message || "No suggestions."); return; }
+    setValues(r.json.values);
+  }
+  return (
+    <label className="field" key={k}>{label}
+      <span className="row">
+        <input type={type === "number" || type === "integer" ? "number" : "text"} list={values?.length ? listId : undefined} value={show(args[k])} onChange={(e) => put(k, coerce(type, e.target.value))} spellCheck="false" autoComplete="off" data-testid={`arg-${k}`} />
+        {!values && <button type="button" onClick={load} disabled={busy} data-testid={`suggest-${k}`}>{busy ? "Loading…" : "Fill from server"}</button>}
+      </span>
+      {values?.length > 0 && <small>{values.length} value{values.length === 1 ? "" : "s"} from the server — start typing to filter</small>}
+      {err && <small className="err-text">{err}</small>}
+      {values?.length > 0 && <datalist id={listId}>{values.map((v) => <option key={v} value={v} />)}</datalist>}
+      {hint}
+    </label>
+  );
+}
+
+function Fields({ schema, args, setArgs, conn }) {
   const props = schema?.properties || {};
   const names = [...Object.keys(props), ...Object.keys(args).filter((k) => !(k in props))];
   const required = new Set(schema?.required || []);
@@ -30,6 +59,7 @@ function Fields({ schema, args, setArgs }) {
     if (p?.enum) return <label className="field" key={k}>{label}<select value={show(args[k])} onChange={(e) => put(k, e.target.value || undefined)}><option value="">(unset)</option>{p.enum.map((o) => <option key={String(o)} value={String(o)}>{String(o)}</option>)}</select>{hint}</label>;
     if (type === "boolean") return <label className="field" key={k}>{label}<select value={args[k] === undefined ? "" : String(args[k])} onChange={(e) => put(k, e.target.value === "" ? undefined : e.target.value === "true")}><option value="">(unset)</option><option value="true">true</option><option value="false">false</option></select>{hint}</label>;
     if (type === "object" || type === "array") return <label className="field" key={k}>{label} (JSON)<textarea rows={3} value={typeof args[k] === "string" ? args[k] : args[k] === undefined ? "" : pretty(args[k])} onChange={(e) => put(k, coerce(type, e.target.value))} spellCheck="false" />{hint}</label>;
+    if (type === "string" && SUGGESTABLE.test(k) && conn) return <FieldWithSuggestions key={k} connId={conn.id} k={k} p={p} args={args} put={put} hint={hint} label={label} type={type} />;
     return <label className="field" key={k}>{label}<input type={type === "number" || type === "integer" ? "number" : "text"} value={show(args[k])} onChange={(e) => put(k, coerce(type, e.target.value))} spellCheck="false" autoComplete="off" />{hint}</label>;
   });
 }
@@ -79,7 +109,7 @@ export default function Tool({ conn, tools, name }) {
           </span>
         </div>
         {mode === "form"
-          ? <Fields schema={tool.inputSchema} args={args} setArgs={setArgs} />
+          ? <Fields schema={tool.inputSchema} args={args} setArgs={setArgs} conn={conn} />
           : <label className="field">Arguments (JSON object)<textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} spellCheck="false" /></label>}
         {parseErr && <p className="err-text" role="alert">{parseErr}</p>}
         {warnings.length > 0 && <ul className="warns" data-testid="warnings">{warnings.map((w) => <li key={`${w.kind}${w.param}`}><strong>{w.kind === "missing" ? "Missing" : "Warning"}:</strong> {w.message}</li>)}</ul>}

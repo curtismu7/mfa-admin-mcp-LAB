@@ -16,7 +16,10 @@ import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shots = path.join(root, '.data', 'e2e-screenshots');
-const port = Number(process.env.E2E_PORT) || 7816;
+// 7816+ may belong to other family labs (one port per app); probe upward for a free pair.
+const portInUse = async (p) => { try { await fetch(`http://127.0.0.1:${p}/api/health`, { signal: AbortSignal.timeout(500) }); return true; } catch { return false; } };
+let port = Number(process.env.E2E_PORT) || 7816;
+while (await portInUse(port)) port += 2; // keep parity: the refused twin takes port+1
 const base = `http://localhost:${port}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -41,9 +44,10 @@ fs.rmSync(shots, { recursive: true, force: true });
 fs.mkdirSync(shots, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM || undefined });
+let page = null;
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
-  const page = await ctx.newPage();
+  page = await ctx.newPage();
   const shot = (name) => page.screenshot({ path: path.join(shots, `${name}.png`), fullPage: true });
   const external = []; const bodies = []; const errors = [];
   page.on('request', (r) => { const u = new URL(r.url()); if (!/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
@@ -56,13 +60,14 @@ try {
 
   // Skip link, first load
   await go('connections');
+  await page.getByRole('heading', { name: 'Connections' }).waitFor({ timeout: 60_000 }); // the SPA has hydrated
   await page.keyboard.press('Tab');
   check((await page.evaluate(() => document.activeElement.textContent)) === 'Skip to content', 'the first Tab stop is the skip link');
   await page.keyboard.press('Enter');
   check(await page.evaluate(() => document.activeElement.id) === 'main', 'the skip link moves focus to the main region');
   // Rule 19 default: Real if configured, else Mock. This server has the owner's Live opt-in, so the page opens in Live; switch to Mock.
   // The shared TopMenu renders the mode as a <select> (option "mock"), not a button.
-  await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor();
+  await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor({ timeout: 60_000 });
   check((await page.getByTestId('banner').innerText()).startsWith('LIVE mode'), 'with the Live opt-in the page opens in Live (rule 19 default) and the banner says so');
   await page.getByTestId('mode-select').selectOption('mock');
   await page.getByTestId('mode').filter({ hasText: 'Mode: mock' }).waitFor();
@@ -318,6 +323,20 @@ try {
   check(!/mock-at-|mock-rt-|demo-secret/.test(all), 'no token or client secret in any API body or the page');
   check(external.length === 0, `the browser made no non-loopback request (${external.length})`);
   check(errors.length === 0, `no console errors${errors.length ? `: ${errors.slice(0, 3).join(' | ')}` : ''}`);
+} catch (e) {
+  console.error('E2E CRASHED:', e?.message || e);
+  try {
+    if (!page) throw new Error('no page');
+    console.error('page url:', page.url());
+    console.error('page body (first 900):', (await page.content()).slice(0, 900));
+    await page.screenshot({ path: path.join(shots, 'crash.png'), fullPage: true }).catch(() => {});
+    console.error('console errors so far:', JSON.stringify(errors).slice(0, 500));
+    const h = await fetch(`${base}/api/health`); console.error('main health:', h.status, (await h.text()).slice(0, 200));
+    const h2 = await fetch(`${base}/`); console.error('index:', h2.status, (await h2.text()).slice(0, 300));
+    const h3 = await fetch(`${base}/assets/index-DG_SlVJj.js`, { method: 'HEAD' }); console.error('asset HEAD:', h3.status);
+    console.error('asset via browser URL:', Boolean(await fetch(`${base}/mfa-admin-mcp/assets/index-DG_SlVJj.js`, { method: 'HEAD' }).then(r => r.status)));
+  } catch (e2) { console.error('diagnostics failed:', e2?.message); }
+  failures++;
 } finally {
   await browser.close();
   server.kill('SIGTERM');
