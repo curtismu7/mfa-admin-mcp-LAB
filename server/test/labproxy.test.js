@@ -5,8 +5,8 @@ import http from 'node:http';
 import test from 'node:test';
 import { createApp } from '../src/app.js';
 import { allPassed, runChecks } from '../src/doctor.js';
-import { allowedHostNames, labAllowedHosts } from '../src/security.js';
-import { startApp } from './helpers.js';
+import { allowedHostNames, browserOrigin, labAllowedHosts, safeReturnTo } from '../src/security.js';
+import { startApp, workerConn } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -20,7 +20,7 @@ const FWD = { 'x-forwarded-host': 'local.ping-devops.com:8443', 'x-forwarded-pro
 const call = (port, method, url, { host, headers = {}, body } = {}) => new Promise((resolve, reject) => {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const req = http.request({ host: '127.0.0.1', port, path: url, method, headers: { Host: host, ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}), ...headers } }, (r) => {
-    let b = ''; r.on('data', (d) => { b += d; }); r.on('end', () => resolve({ status: r.statusCode, body: b }));
+    let b = ''; r.on('data', (d) => { b += d; }); r.on('end', () => resolve({ status: r.statusCode, body: b, headers: r.headers }));
   });
   req.on('error', reject); req.end(payload);
 });
@@ -90,4 +90,39 @@ test('behind the lab-proxy: a write is accepted only with the proxy\'s forwarded
       assert.match(r.body, re);
     } finally { await x.close(); }
   }
+});
+
+test('browserOrigin believes X-Forwarded-* only for a LAB_ALLOWED_HOSTS Host; safeReturnTo keeps plain same-origin paths only', () => {
+  const req = (headers) => ({ headers });
+  const lab = new Set([PROXY_HOST]);
+  const proxied = { host: `${PROXY_HOST}:7815`, ...FWD };
+  assert.equal(browserOrigin(req(proxied), lab), PROXY_ORIGIN);
+  assert.equal(browserOrigin(req({ host: '127.0.0.1:7815', ...FWD }), lab), 'http://127.0.0.1:7815', 'a loopback Host cannot borrow forwarded headers');
+  assert.equal(browserOrigin(req(proxied), new Set()), `http://${PROXY_HOST}:7815`, 'no LAB_ALLOWED_HOSTS: forwarded headers are ignored');
+  assert.equal(browserOrigin(req({ ...proxied, 'x-forwarded-proto': 'ftp' }), lab), `http://${PROXY_HOST}:7815`);
+  for (const ok of ['/', '/mfa-admin-mcp/', '/mfa-admin-mcp', '/a/b/']) assert.equal(safeReturnTo(ok), ok);
+  for (const bad of [undefined, '', 'mfa', '//evil.example', 'https://evil.example', '/\\evil', '/a/../b', '/./a', '/a?x', '/a#x', '/a b', '/%2e%2e/', `/${'a'.repeat(300)}`, 5, {}]) assert.equal(safeReturnTo(bad), '/', String(bad));
+});
+
+test('behind the lab-proxy: the OAuth callback is judged by the browser\'s URL and returns to the page the sign-in started from', async () => {
+  const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
+  try {
+    const c = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, redirectUri: `${PROXY_ORIGIN}/api/oauth/callback` })).json;
+    const host = `${PROXY_HOST}:7815`;
+    // what the browser does: start sign-in from a page, follow the authorization server's redirect back to the proxy's /api/oauth/callback
+    const signIn = async (returnTo, fwd = FWD) => {
+      const start = await call(s.port, 'POST', `/api/connections/${c.id}/login/start`, { host, headers: { ...FWD, origin: PROXY_ORIGIN }, body: { returnTo } });
+      assert.equal(start.status, 200, start.body);
+      const authz = await fetch(JSON.parse(start.body).authorizeUrl, { redirect: 'manual' });
+      const back = new URL(authz.headers.get('location'));
+      return call(s.port, 'GET', `${back.pathname}${back.search}`, { host, headers: fwd });
+    };
+    const ok = await signIn('/mfa-admin-mcp/');
+    assert.equal(ok.status, 302);
+    assert.equal(ok.headers.location, `/mfa-admin-mcp/?login=ok&connection=${encodeURIComponent(c.id)}`, 'not "/", which the proxy sends to the shelf');
+    for (const hostile of ['//evil.example', 'https://evil.example/', '/\\evil', '/a/../b', '/a?x=1']) assert.match((await signIn(hostile)).headers.location, /^\/\?login=ok/, hostile);
+    assert.equal((await signIn(undefined)).headers.location.slice(0, 10), '/?login=ok', 'no returnTo: the old behaviour');
+    const wrong = await signIn('/mfa-admin-mcp/', { 'x-forwarded-host': 'evil.example.com', 'x-forwarded-proto': 'https' });
+    assert.equal(wrong.headers.location, '/mfa-admin-mcp/?login=error&reason=redirect_mismatch', 'a callback that did not arrive on the registered URL still fails, and still returns to the app');
+  } finally { await s.close(); }
 });

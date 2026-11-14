@@ -99,11 +99,11 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
     return { authorize: `${b}/authorize`, token: `${b}/token`, jwks: `${b}/jwks` }[what];
   };
 
-  function startLogin(conn, { idp } = {}) {
+  function startLogin(conn, { idp, returnTo = '/' } = {}) {
     if (conn.kind !== 'pingone' || conn.auth !== 'interactive') throw authError('not_interactive', 'this connection does not use interactive sign-in');
     for (const [s, p] of pending) if (now() - p.at > stateTtlMs) pending.delete(s);
     const state = b64u(crypto.randomBytes(24)); const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
-    pending.set(state, { connId: conn.id, verifier, nonce, redirectUri: conn.redirectUri, at: now(), idp: idp === 'pf' ? 'pf' : (conn.idp || 'pingone') });
+    pending.set(state, { connId: conn.id, verifier, nonce, redirectUri: conn.redirectUri, returnTo, at: now(), idp: idp === 'pf' ? 'pf' : (conn.idp || 'pingone') });
     const q = new URLSearchParams({ response_type: 'code', client_id: conn.clientId, redirect_uri: conn.redirectUri, scope: 'openid offline_access', state, nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256' });
     return { authorizeUrl: `${ep({ ...conn, idp: idp === 'pf' ? 'pf' : conn.idp }, 'authorize')}?${q}`, state };
   }
@@ -150,5 +150,6 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
   // Reset: every token and every half-finished sign-in is dropped; the saved connections stay.
   const resetAll = () => { tokens.clear(); pending.clear(); };
   const pendingConnId = (state) => pending.get(state)?.connId ?? null;
-  return { accessToken, renew, status, secretsOf, allSecrets, startLogin, completeLogin, logout, resetAll, pendingConnId, _pending: pending };
+  const pendingReturnTo = (state) => pending.get(state)?.returnTo ?? '/';
+  return { accessToken, renew, status, secretsOf, allSecrets, startLogin, completeLogin, logout, resetAll, pendingConnId, pendingReturnTo, _pending: pending };
 }

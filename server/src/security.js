@@ -52,6 +52,25 @@ export function hostCheck(env = process.env) {
   };
 }
 
+// The origin the browser used for this request. Behind the lab-proxy, Host is this app's own upstream name and the browser is on the
+// proxy's https name: X-Forwarded-Host/-Proto carry it, believed only when Host is a LAB_ALLOWED_HOSTS name (same rule as sameOriginWrites).
+export function browserOrigin(req, lab = new Set()) {
+  if (lab.has(hostName(req.headers.host))) {
+    const xfh = String(req.headers['x-forwarded-host'] || '').toLowerCase();
+    const xfp = String(req.headers['x-forwarded-proto'] || 'https').toLowerCase();
+    if (xfh !== '' && (xfp === 'https' || xfp === 'http')) return `${xfp}://${xfh}`;
+  }
+  return `http://${req.headers.host}`;
+}
+
+// Where to send the browser after the OAuth callback: the page it signed in from. The proxy sends a bare "/" to the shelf, so "/" would
+// land the user on the wrong app. Only a plain same-origin path is kept (no scheme, host, "//", backslash, query or dot segments).
+export function safeReturnTo(p) {
+  const s = String(p ?? '');
+  const ok = s.length <= 200 && /^\/(?:[A-Za-z0-9._~-]+\/)*[A-Za-z0-9._~-]*$/.test(s) && !s.split('/').some((seg) => seg === '.' || seg === '..');
+  return ok ? s : '/';
+}
+
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 export function sameOriginWrites(lab = new Set()) {
   return (req, res, next) => {
