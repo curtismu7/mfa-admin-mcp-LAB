@@ -255,6 +255,48 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     }
   }
   app.post('/api/connections/:id/call', h(async (req, res, conn) => { const r = await gatedCall(conn, req.body || {}); res.status(r.status).json(r.body); }));
+  // Form suggestions: fill a tool argument from a read-only lookup tool instead of asking the
+  // user to know values (index names, user ids). Strictly heuristic: the lookup tool must exist
+  // in this connection's catalog, must class as read, and runs with the connection's own gate.
+  const LOOKUP_BY_FIELD = [
+    { test: /^index(name)?$/i, tools: ['ListIndexTool', 'list_indices', 'listIndexes', 'ListIndicesTool', 'list_index'], pick: (r) => deepCollect(r, ['index', 'name', 'id']) },
+    { test: /^(user(id)?|userId)$/i, tools: ['listUsers', 'getUsers', 'list_users'], pick: (r) => deepCollect(r, ['username', 'id', 'userId', 'email']) },
+    { test: /^environmentId$/i, tools: ['listEnvironments', 'getEnvironments'], pick: (r) => deepCollect(r, ['id', 'name']) },
+  ];
+  // Tool results wrap payloads in content blocks; JSON-in-text is the common shape, so parse it.
+  const unwrap = (result) => {
+    const blocks = result?.content;
+    if (Array.isArray(blocks)) {
+      const parsed = blocks.map((b) => { if (b?.type !== 'text' || typeof b.text !== 'string') return b; try { return JSON.parse(b.text); } catch { return b; } });
+      return parsed.length === 1 ? parsed[0] : parsed;
+    }
+    return result;
+  };
+  function deepCollect(v, keys, out = [], depth = 0) {
+    if (out.length >= 50 || depth > 8) return out;
+    if (Array.isArray(v)) { for (const x of v) deepCollect(x, keys, out, depth + 1); return out; }
+    if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) {
+        if (keys.includes(k) && (typeof x === 'string' || typeof x === 'number')) out.push(String(x));
+        else deepCollect(x, keys, out, depth + 1);
+      }
+    }
+    return out;
+  }
+  app.post('/api/connections/:id/suggest', h(async (req, res, conn) => {
+    const field = String(req.body?.field || '');
+    const spec = LOOKUP_BY_FIELD.find((l) => l.test.test(field));
+    if (!spec) return res.status(400).json({ error: 'bad_request', message: `No suggestions available for "${field}".` });
+    const tools = await listAnnotated(conn);
+    const lookup = tools.find((t) => spec.tools.includes(t.name) && t.class === 'read');
+    if (!lookup) return res.status(404).json({ error: 'no_lookup_tool', message: `This server has no read tool to list values for "${field}" (tried: ${spec.tools.join(', ')}).` });
+    const args = /^(user(id)?|userId)$/i.test(field) ? (conn.kind === 'pingone' ? { environmentId: conn.envId, limit: 25 } : {}) : {};
+    if (lookup.name === 'ListIndexTool' || /list.?ind/i.test(lookup.name)) { for (const k of Object.keys(lookup.inputSchema?.properties || {})) if (/^index(name)?$/i.test(k)) args[k] = ''; }
+    const r = await gatedCall(conn, { tool: lookup.name, arguments: args });
+    if (r.status !== 200) return res.status(r.status).json(r.body);
+    const values = [...new Set(spec.pick(unwrap(r.body?.result)))].slice(0, 50);
+    res.json({ ok: true, field, via: lookup.name, values });
+  }));
   app.post('/api/connections/:id/rpc', h(async (req, res, conn) => {
     const { method, params } = req.body || {};
     if (method === 'tools/call') { const r = await gatedCall(conn, { ...(params || {}), tool: params?.name, confirm: req.body.confirm, argsHash: req.body.argsHash, typedName: req.body.typedName }); return res.status(r.status).json(r.body); }
