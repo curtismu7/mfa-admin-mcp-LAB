@@ -258,8 +258,8 @@ try {
   // interactive login against the stub AS, browser follows the redirect and back
   await page.getByRole('link', { name: 'Connections' }).click();
   await page.getByRole('button', { name: /Add mock demo with sign-in/ }).click();
-  await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: /^Sign in \(/ }).waitFor();
+  await page.getByRole('button', { name: /^Sign in \(/ }).click();
   await page.waitForURL(/login=|#/, { timeout: 8000 }).catch(() => {});
   await page.getByTestId('tool-count').waitFor({ timeout: 8000 });
   check((await page.getByTestId('identity').innerText()).includes('signed in as mock-admin-user'), 'interactive: back from the stub AS, signed in as <sub>');
@@ -267,7 +267,7 @@ try {
   check((await page.locator('[data-testid="conn-card"]').last().innerText()).includes('Sign out'), 'a Sign out button replaces Sign in');
   await shot('12-interactive');
   await page.getByRole('button', { name: /^Sign out/ }).click();
-  await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+  await page.getByRole('button', { name: /^Sign in \(/ }).waitFor();
   check(true, 'logout clears the session (Sign in is offered again)');
 
   // the header Reset: audit cleared, connections kept
