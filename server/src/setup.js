@@ -13,13 +13,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { liveRefusal } from './config.js';
 import { permit } from './netguard.js';
+import { validEnvId, validRegion } from './urls.js';
 
 // The Management worker for setup lives in the same local file the "Add PingOne worker"
 // preset uses (MFAADM_WORKER_ENV_FILE, default ~/.config/mfa-admin-mcp/worker.env):
 // PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and optionally PINGONE_ENV_ID / PINGONE_REGION
 // so the user does not type the environment id either. The secret is read per request and
 // never stored, logged, or echoed.
-export function readWorkerEnv(env = process.env) {
+function parseWorkerEnvFile(env) {
   const file = env.MFAADM_WORKER_ENV_FILE || path.join(os.homedir(), '.config', 'mfa-admin-mcp', 'worker.env');
   let txt;
   try { txt = fs.readFileSync(file, 'utf8'); } catch { return null; }
@@ -29,6 +30,22 @@ export function readWorkerEnv(env = process.env) {
     const i = line.indexOf('=');
     if (i > 0) v[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
+  return v;
+}
+
+// The default environment the UI pre-fills (Setup, Add connection, tool arguments): PINGONE_ENV_ID and PINGONE_REGION from the same
+// file, or PINGONE_ENVIRONMENT_ID from the process env. Needs no client id or secret, and returns neither. A value that is not a
+// valid environment id / verified region is dropped, so a typo in the file cannot reach a form.
+export function workerDefaults(env = process.env) {
+  const v = parseWorkerEnvFile(env) || {};
+  const envId = v.PINGONE_ENV_ID || env.PINGONE_ENVIRONMENT_ID || '';
+  const region = String(v.PINGONE_REGION || env.PINGONE_REGION || '').toLowerCase();
+  return { envId: validEnvId(envId) ? envId : null, region: validRegion(region) ? region : null };
+}
+
+export function readWorkerEnv(env = process.env) {
+  const v = parseWorkerEnvFile(env);
+  if (!v) return null;
   if (!v.PINGONE_CLIENT_ID || !v.PINGONE_CLIENT_SECRET) return null;
   return { clientId: v.PINGONE_CLIENT_ID, clientSecret: v.PINGONE_CLIENT_SECRET, envId: v.PINGONE_ENV_ID || null, region: (v.PINGONE_REGION || '').toLowerCase() || null };
 }
@@ -57,6 +74,7 @@ const withPermit = async (host, fn) => { const r = permit(host); try { return aw
 
 export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) {
   const refused = liveRefusal(env);
+  app.get('/api/setup/defaults', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(workerDefaults(env)); });
   // Read-only: check what setup would find/create. No credential handling.
   app.post('/api/setup/check', async (req, res) => {
     const w = readWorkerEnv(env);

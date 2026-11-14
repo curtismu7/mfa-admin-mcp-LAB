@@ -18,6 +18,7 @@ function coerce(type, text) {
 }
 
 const SUGGESTABLE = /^(index(name)?|user(id)?|environmentId)$/i;
+const ENV_KEY = /^(environment_?id|env_?id)$/i; // a tool may spell the environment parameter either way
 
 // One suggestions list per field, loaded on demand from the connection's own read tools.
 function FieldWithSuggestions({ connId, k, p, args, put, hint, label, type }) {
@@ -64,16 +65,20 @@ function Fields({ schema, args, setArgs, conn }) {
   });
 }
 
-export default function Tool({ conn, tools, name }) {
+export default function Tool({ conn, tools, name, defaults = {} }) {
   const tool = (tools || []).find((t) => t.name === name);
   const { present } = usePresent();
-  const initial = useMemo(() => (conn?.kind === "pingone" && tool?.inputSchema?.properties?.environmentId ? { environmentId: conn.envId } : {}), [conn, tool]);
+  // The environment argument is always filled: the connection's own environment, else the default from worker.env.
+  // Primitives, so a reload of the connection list (a new object each time) does not reset what the user typed.
+  const envKey = Object.keys(tool?.inputSchema?.properties || {}).find((k) => ENV_KEY.test(k));
+  const envValue = (conn?.kind === "pingone" && conn.envId) || defaults.envId || "";
+  const initial = useMemo(() => (envKey && envValue ? { [envKey]: envValue } : {}), [envKey, envValue]);
   const [args, setArgs] = useState(initial);
   const [mode, setMode] = useState("form");
   const [text, setText] = useState("{}");
   const [parseErr, setParseErr] = useState("");
   const g = useGatedCall();
-  useEffect(() => { setArgs(initial); setMode("form"); g.clear(); }, [name, conn?.id, tool?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setArgs(initial); setMode("form"); g.clear(); }, [name, conn?.id, tool?.name, initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!conn) return <><h1>Tool</h1><p>Select a connection first.</p></>;
   if (!tool) return <><h1>Tool</h1><p>This identity does not see a tool called <Untrusted text={name} />. The list is gated by role. <a href="#/tools">Back to the tools</a></p></>;

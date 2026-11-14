@@ -45,6 +45,7 @@ function Shell() {
   const [now, setNow] = useState(Date.now());
   const [theme, setTheme] = useState(() => store.get("mfaadm.theme") || "system");
   const [info, setInfo] = useState(null); // GET /api/info; null = not known yet
+  const [defaults, setDefaults] = useState({ envId: null, region: null }); // the default environment from worker.env, to pre-fill forms
   const [mode, setModeState] = useState("mock");
   const [refusal, setRefusal] = useState("");
   const [epoch, setEpoch] = useState(0); // bumped by Reset: remounts the page, so the diagram boxes and form fields start over
@@ -99,6 +100,8 @@ function Shell() {
     setTs({ id, tools: r.ok ? r.json.tools : [], loading: false, error: r.ok ? "" : r.status === 401 ? "Sign in first (interactive connection)." : r.json?.message || "Could not list tools." });
   }, []);
 
+  useEffect(() => { api.get("/api/setup/defaults").then((r) => { if (r.ok) setDefaults({ envId: r.json.envId || null, region: r.json.region || null }); }); }, []);
+
   // First load, and the return from PingOne's authorization server (?login=ok&connection=...).
   useEffect(() => {
     (async () => {
@@ -129,7 +132,7 @@ function Shell() {
   const page = (() => {
     switch (route.page) {
       case "tools": return <Tools conn={active} tools={ts.id === active?.id ? ts.tools : null} loading={ts.loading} error={ts.error} test={active && tests[active.id]} testBusy={testBusy === active?.id} now={now} />;
-      case "tool": return <Tool conn={active} tools={ts.id === active?.id ? ts.tools : null} name={route.rest} />;
+      case "tool": return <Tool conn={active} tools={ts.id === active?.id ? ts.tools : null} name={route.rest} defaults={defaults} />;
       case "raw": return <Raw conn={active} />;
       case "audit": return <Audit />;
       case "mcp-first": return <McpFirst />;
@@ -137,7 +140,7 @@ function Shell() {
       case "diagram": return <Diagram theme={theme} />;
       default: return (
         <>
-          <Connections mode={mode} conns={modeConns} activeId={active?.id ?? null} onSelect={select} reload={reload} tests={tests} testBusy={testBusy} runTest={runTest} now={now} say={say} />
+          <Connections defaults={defaults} mode={mode} conns={modeConns} activeId={active?.id ?? null} onSelect={select} reload={reload} tests={tests} testBusy={testBusy} runTest={runTest} now={now} say={say} />
           <TestResultModal conn={testModal ? conns.find((c) => c.id === testModal.id) : null} test={testModal ? tests[testModal.id] : null} busy={testBusy === testModal?.id} onClose={() => setTestModal(null)} />
         </>
       );
