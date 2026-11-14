@@ -2,7 +2,7 @@
 
 Generated from `web/src/data/stories/*.json` (generic vertical) by `npm run talk-track`. Do not edit by hand.
 
-Before you start, say which mode you are in: the header toggle, the `Mode:` chip and the banner all show it. **Mock** is simulated (an in-process mock of the hosted server, an illustrative sample, not a recording). **Live** is owner-run, refused until the owner opts in, and acts on a real server. Both stories run in Mock.
+Before you start, say which mode you are in: the header toggle, the `Mode:` chip and the banner all show it. **Mock** is simulated (an in-process mock of the hosted server, an illustrative sample, not a recording). **Live** is owner-run, gated only by the loopback-bind guard (no env opt-in), and acts on a real server. Both stories run in Mock.
 
 Press P (or the Present button) for presenter mode: larger text, and the banner and the mode stay on screen. Esc leaves it. Reset (header) puts the demo back to its start: audit history, tokens, writes off, the mock's fake tenant, and the diagram boxes.
 
