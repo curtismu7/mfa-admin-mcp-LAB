@@ -109,10 +109,10 @@ function Wizard({ onCreated, say }) {
 function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
   async function act(fn, msg) { const r = await fn(); if (!r.ok) say(r.json?.message || "That did not work."); else if (msg) say(msg); onChange(); return r; }
-  async function signIn() {
-    const r = await api.post(`/api/connections/${c.id}/login/start`);
+  async function signIn(idp) {
+    const r = await api.post(`/api/connections/${c.id}/login/start`, { idp });
     if (!r.ok) { say(r.json?.message || "Could not start sign-in."); return; }
-    say("Sending your browser to PingOne's authorization server…");
+    say(idp === "pf" ? "Sending your browser to your PingFederate instance…" : "Sending your browser to PingOne's authorization server…");
     window.location.assign(r.json.authorizeUrl);
   }
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
@@ -131,7 +131,10 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         <button type="button" data-testid="test-conn" onClick={() => onTest(c.id)}>Test connection</button>
         {c.kind === "pingone" && c.auth === "interactive" && (st.signedIn
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
-          : <button type="button" onClick={signIn} title={c.idp === "pf" ? "Interactive sign-in at your PingFederate instance (authorization code + PKCE)" : "Interactive sign-in at PingOne's authorization server (authorization code + PKCE)"}>{c.idp === "pf" ? "Sign in (PingFederate)" : "Sign in (PingOne)"}</button>)}
+          : <span className="row">
+              <button type="button" onClick={() => signIn("pingone")} title="Interactive sign-in at PingOne's authorization server (authorization code + PKCE)">P1 login</button>
+              <button type="button" onClick={() => signIn("pf")} title="Interactive sign-in at your PingFederate instance (authorization code + PKCE). Configure the PF base URL in the connection wizard.">PF login</button>
+            </span>)}
         {role && c.auth === "worker" && (
           <span className="seg" role="group" aria-label="Demo role">
             {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id, { modal: false }))}>{r}</button>)}

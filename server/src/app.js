@@ -317,7 +317,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     if (!u || !schemeOk || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
       return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be http://localhost:${hostPort}/api/oauth/callback (or /callback), exactly as registered on your OAuth application.` });
     }
-    res.json({ authorizeUrl: auth.startLogin(conn).authorizeUrl });
+    res.json({ authorizeUrl: auth.startLogin(conn, { idp: req.body?.idp }).authorizeUrl });
   }));
   const callback = async (req, res) => {
     const at = `http://${req.headers.host}${req.path}`;

@@ -29,12 +29,12 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
 
   const baseOf = (conn) => asBase({ region: conn.region, envId: conn.envId, offlineBase: resolveBase(conn), idp: conn.idp, idpBaseUrl: conn.idpBaseUrl });
 
-  async function tokenRequest(conn, params, { basic } = {}) {
+  async function tokenRequest(conn, params, { basic, idp } = {}) {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
     const body = new URLSearchParams(params);
     if (basic) headers.Authorization = `Basic ${Buffer.from(`${conn.clientId}:${conn.clientSecret}`).toString('base64')}`;
     let res;
-    try { res = await fetchImpl(`${baseOf(conn)}/token`, { method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(15_000) }); }
+    try { res = await fetchImpl(ep({ ...conn, ...(idp ? { idp } : {}) }, 'token'), { method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(15_000) }); }
     catch (e) { throw authError('token_endpoint_unreachable', `token endpoint unreachable (${e?.cause?.code || e?.code || 'network error'})`); }
     let json = null;
     try { json = JSON.parse((await res.text()).slice(0, 100_000)); } catch { /* not JSON */ }
@@ -91,19 +91,28 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
   const secretsOf = (conn) => { const t = tokens.get(conn.id); return t ? [t.accessToken, t.refreshToken].filter(Boolean) : []; };
   const allSecrets = () => [...tokens.values()].flatMap((t) => [t.accessToken, t.refreshToken].filter(Boolean));
 
-  function startLogin(conn) {
+  // Per-IdP endpoint paths after the base. PingOne: /as/{authorize,token,jwks}.
+  // PingFederate: /as/authorization.oauth2, /as/token.oauth2, /pf/JWKS.
+  const ep = (conn, what) => {
+    const b = baseOf(conn);
+    if (conn.idp === 'pf') return { authorize: `${b}/authorization.oauth2`, token: `${b}/token.oauth2`, jwks: `${b.replace(/\/as$/, '')}/pf/JWKS` }[what];
+    return { authorize: `${b}/authorize`, token: `${b}/token`, jwks: `${b}/jwks` }[what];
+  };
+
+  function startLogin(conn, { idp } = {}) {
     if (conn.kind !== 'pingone' || conn.auth !== 'interactive') throw authError('not_interactive', 'this connection does not use interactive sign-in');
     for (const [s, p] of pending) if (now() - p.at > stateTtlMs) pending.delete(s);
     const state = b64u(crypto.randomBytes(24)); const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
-    pending.set(state, { connId: conn.id, verifier, nonce, redirectUri: conn.redirectUri, at: now() });
+    pending.set(state, { connId: conn.id, verifier, nonce, redirectUri: conn.redirectUri, at: now(), idp: idp === 'pf' ? 'pf' : (conn.idp || 'pingone') });
     const q = new URLSearchParams({ response_type: 'code', client_id: conn.clientId, redirect_uri: conn.redirectUri, scope: 'openid offline_access', state, nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256' });
-    return { authorizeUrl: `${baseOf(conn)}/authorize?${q}`, state };
+    return { authorizeUrl: `${ep({ ...conn, idp: idp === 'pf' ? 'pf' : conn.idp }, 'authorize')}?${q}`, state };
   }
 
-  async function verifyIdToken(conn, idToken, nonce) {
+  async function verifyIdToken(conn, idToken, nonce, { idp } = {}) {
     const { header, claims, signed, sig } = decodeJwt(idToken);
+    const eff = { ...conn, ...(idp ? { idp } : {}) };
     let jwks;
-    try { jwks = await (await fetchImpl(`${baseOf(conn)}/jwks`, { redirect: 'manual', signal: AbortSignal.timeout(15_000) })).json(); }
+    try { jwks = await (await fetchImpl(ep(eff, 'jwks'), { redirect: 'manual', signal: AbortSignal.timeout(15_000) })).json(); }
     catch { throw authError('jwks_unavailable', 'could not fetch the signing keys'); }
     const jwk = (jwks.keys || []).find((k) => k.kid === header.kid) || (jwks.keys || [])[0];
     // PingOne issues RS256; PingFederate commonly issues other algorithms (ES256 in our lab mock, RS or ES in real deployments).
@@ -111,7 +120,7 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
     if (!jwk) throw authError('bad_id_token', 'id_token has no matching key in the JWKS');
     const ok = crypto.createVerify(header.alg === 'ES256' ? 'SHA256' : 'RSA-SHA256').update(signed).verify(crypto.createPublicKey({ key: jwk, format: 'jwk' }), sig);
     if (!ok) throw authError('bad_id_token', 'id_token signature does not verify');
-    if (claims.iss !== baseOf(conn)) throw authError('iss_mismatch', 'id_token issuer is not this environment');
+    if (claims.iss !== baseOf(eff)) throw authError('iss_mismatch', 'id_token issuer is not this environment');
     if (![].concat(claims.aud).includes(conn.clientId)) throw authError('aud_mismatch', 'id_token audience is not this client');
     if (!(claims.exp * 1000 > now())) throw authError('bad_id_token', 'id_token expired');
     if (claims.nonce !== nonce) throw authError('nonce_mismatch', 'id_token nonce does not match');
@@ -128,11 +137,11 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
     const conn = getConn(p.connId);
     if (!conn) throw authError('no_connection', 'connection no longer exists');
     if (q.error) throw authError('authorization_denied', `authorization server answered: ${scrub(String(q.error).slice(0, 60))}`);
-    if (q.iss !== undefined && q.iss !== baseOf(conn)) throw authError('iss_mismatch', 'issuer in the callback is not this environment');
+    if (q.iss !== undefined && q.iss !== baseOf({ ...conn, idp: p.idp })) throw authError('iss_mismatch', 'issuer in the callback is not this environment');
     if (!q.code) throw authError('no_code', 'callback carried no code');
-    const json = await tokenRequest(conn, { grant_type: 'authorization_code', code: String(q.code), redirect_uri: p.redirectUri, client_id: conn.clientId, code_verifier: p.verifier });
+    const json = await tokenRequest(conn, { grant_type: 'authorization_code', code: String(q.code), redirect_uri: p.redirectUri, client_id: conn.clientId, code_verifier: p.verifier }, { idp: p.idp });
     if (!json.id_token) throw authError('bad_id_token', 'no id_token returned, so the nonce cannot be checked');
-    const claims = await verifyIdToken(conn, json.id_token, p.nonce);
+    const claims = await verifyIdToken(conn, json.id_token, p.nonce, { idp: p.idp });
     const rec = remember(conn, json); rec.sub = String(claims.sub || '').slice(0, 80) || null;
     return { connId: conn.id, sub: rec.sub };
   }
