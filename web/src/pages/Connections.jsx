@@ -110,7 +110,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
   async function act(fn, msg) { const r = await fn(); if (!r.ok) say(r.json?.message || "That did not work."); else if (msg) say(msg); onChange(); return r; }
   async function signIn(idp) {
-    const r = await api.post(`/api/connections/${c.id}/login/start`, { idp });
+    const r = await api.post(`/api/connections/${c.id}/login/start`, { idp, returnTo: window.location.pathname }); // returnTo: the callback returns here, not to "/" (the proxy sends that to the shelf)
     if (!r.ok) { say(r.json?.message || "Could not start sign-in."); return; }
     say(idp === "pf" ? "Sending your browser to your PingFederate instance…" : "Sending your browser to PingOne's authorization server…");
     window.location.assign(r.json.authorizeUrl);
