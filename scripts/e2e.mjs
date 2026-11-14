@@ -330,6 +330,8 @@ try {
     console.error('console errors so far:', JSON.stringify(errors).slice(0, 500));
     const h = await fetch(`${base}/api/health`); console.error('main health:', h.status, (await h.text()).slice(0, 200));
     const h2 = await fetch(`${base}/`); console.error('index:', h2.status, (await h2.text()).slice(0, 300));
+    const h3 = await fetch(`${base}/assets/index-DG_SlVJj.js`, { method: 'HEAD' }); console.error('asset HEAD:', h3.status);
+    console.error('asset via browser URL:', Boolean(await fetch(`${base}/mfa-admin-mcp/assets/index-DG_SlVJj.js`, { method: 'HEAD' }).then(r => r.status)));
   } catch (e2) { console.error('diagnostics failed:', e2?.message); }
   failures++;
 } finally {
