@@ -8,7 +8,7 @@ Tier: Tester
 Repo: https://github.com/curtismu7/mfa-admin-mcp-LAB
 Catalog: D132
 
-> **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is refused** until the owner opts in, and the banner on every tab, presenter mode included, names the mode. The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
+> **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is gated by the loopback-bind guard only** (no env opt-in), and the banner on every tab, presenter mode included, names the mode. The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
 
 ## What is simulated
 
@@ -63,7 +63,7 @@ All standalone apps read one settings file, `~/Development/.env` (mode 600). `ST
 | `PINGONE_ENVIRONMENT_ID` | optional | Default environment id for the "Add PingOne worker" preset (Live only). Not a secret. |
 | `PINGONE_REGION` | optional | Default region (`com`, `eu`, `asia`, `ca`) for the same preset. |
 
-No admin or worker credential belongs in this file, and none is read from it. The saved connections (including a worker client secret, which is write-only) live in the app's own owner-only folder (`.data`, or `MFAADM_DATA_DIR`; mode 700, files mode 600). The "Add PingOne worker" preset reads the worker's client id and secret from a separate local file outside the repo (`~/.config/mfa-admin-mcp/worker.env`, or `MFAADM_WORKER_ENV_FILE`; see `.env.example`). `.env.example` lists every environment variable; the old repo-level `.env` loader is gone. The port is not in the settings file: apps keep their port defaults in code.
+No admin or worker credential belongs in this file, and none is read from it. The saved connections (including a worker client secret, which is write-only) live in the app's own owner-only folder (`.data`, or `MFAADM_DATA_DIR`; mode 700, files mode 600). The "Add PingOne worker" preset reads the worker's client id and secret from a separate local file outside the repo (`~/.config/mfa-admin-mcp/worker.env`, or `MFAADM_WORKER_ENV_FILE`; see `.env.example`). `.env.example` lists every environment variable; the old repo-level `.env` loader is gone. The port is not in the settings file: apps keep their port defaults in code. **Owner-approved exception (2026-11-14):** the rulebook asks for a per-app `.env` beside the compose file; this lab instead reads the shared settings file above (three non-secret keys) and the separate `worker.env` for the setup card's credentials.
 
 ## Ports, and what to do if the port is taken
 
@@ -150,20 +150,21 @@ Safety notes: loopback bind (refused otherwise unless `MFAADM_BIND` is set), Hos
 ## Known gaps and not done
 
 - **The diagram viewer is this app's own.** Rule 17 is met in the data, not by embedding the studio's viewer: the boxes and arrows are diagram-studio/1 files, but `web/src/pages/Diagram.jsx` draws them with its own ReactFlow box (the studio's live-trace and custom-node viewer is not shared). Each arrow may carry an optional `handles` hint (which side slot it leaves and enters by); the studio's validator ignores it, and the page falls back to the sides that face each other without it. The data's groups are not used for colour: every box looks the same, as before.
-- **Live was not run against a real tenant** in this repo (see the top of this file). Live is gated, not removed: the connection form, presets, worker and interactive auth are the old code. "Every page has a real and a mock version" is met by the toggle, with the live side refused until the owner opts in.
+- **Live was not run against a real tenant** in this repo (see the top of this file). Live is gated, not removed: the connection form, presets, worker and interactive auth are the old code. "Every page has a real and a mock version" is met by the toggle; Live is gated by the loopback-bind guard only (owner decision 2026-11-13: no env opt-in).
 - **The SE k8s mock build is deferred (owner, 2026-10-31).** Docker is the only packaged form; there are no manifests or deploy scripts.
 - **No per-workspace isolation.** Tester tier does not require it.
-- **The PingOne worker preset reads a local credentials file** (`worker.env`, outside the repo and outside the shared settings file). Whether that fits the rule that worker credentials live only in the provisioning file is for the owner to decide (UNVERIFIED).
+- **The PingOne worker preset reads a local credentials file** (`worker.env`, outside the repo and outside the shared settings file). The rulebook keeps worker credentials in a per-app `.env` or the shared provisioning file; the owner approved this lab's two file locations as an exception on 2026-11-14 (see Settings file above).
+- **The interactive sign-in is a redirect login** (authorization code + PKCE), a waived exception to the pi.flow-only login rule (owner, 2026-11-14): [rule-16-waiver.md](docs/rule-16-waiver.md) says what is covered and which guards stay.
 - **Catalog id D132** matches the shelf catalog row added alongside the registry entry (demo-shelf-LAB PR #60).
 - **`npm run e2e` and the Playwright proof** are not part of `npm test` or CI.
 
 ## Docs
 
-[security.md](docs/security.md) (each rule and the test that enforces it), [architecture.md](docs/architecture.md), [classification.md](docs/classification.md), [live-checks.md](docs/live-checks.md), [references.md](docs/references.md), [talk-track.md](docs/talk-track.md), [CHANGELOG.md](CHANGELOG.md).
+[security.md](docs/security.md) (each rule and the test that enforces it), [architecture.md](docs/architecture.md), [classification.md](docs/classification.md), [live-checks.md](docs/live-checks.md), [rule-16-waiver.md](docs/rule-16-waiver.md), [references.md](docs/references.md), [talk-track.md](docs/talk-track.md), [CHANGELOG.md](CHANGELOG.md).
 
 ## Packaging files
 
-`content-pack.json` is the Learning Hub pack (`demo-content-pack/1`), generated by `npm run content-pack` (it also validates; do not hand-edit it). `docs/shelf-entry.json` is the Demo Shelf registry entry (port 7815, catalog id `D3`, a relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's validation rules, tested against the entry.
+`content-pack.json` is the Learning Hub pack (`demo-content-pack/1`), generated by `npm run content-pack` (it also validates; do not hand-edit it). `docs/shelf-entry.json` is the Demo Shelf registry entry (port 7815, catalog id `D132`, a relative `composeFile`); `scripts/lib/shelf-registry-rules.mjs` is a copy of the shelf's validation rules, tested against the entry.
 
 ## Layout
 
