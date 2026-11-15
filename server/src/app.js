@@ -342,6 +342,20 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   for (const p of CALLBACK_PATHS) app.get(p, callback);
   app.post('/api/connections/:id/logout', h((_req, res, conn) => { auth.logout(conn); res.json({ ok: true }); }, { noNetwork: true }));
 
+  // ---- pi.flow sign-in: the password step stays in this lab's own modal; no redirect is ever followed or served ----
+  app.post('/api/connections/:id/login/pi-flow/start', h(async (req, res, conn) => {
+    if (isMock(conn)) await ensureMock();
+    const started = auth.startPiFlowLogin(conn, { idp: req.body?.idp, returnTo: safeReturnTo(req.body?.returnTo) });
+    const opened = await started.open();
+    res.json({ ok: true, state: opened.state, flowId: opened.flowId, status: opened.status });
+  }));
+  app.post('/api/connections/:id/login/pi-flow/credentials', h(async (req, res, conn) => {
+    if (isMock(conn)) await ensureMock();
+    const state = String(req.body?.state || '');
+    const r = await withPermits(conn, () => auth.piFlowCredentials(conn, { state, username: req.body?.username, password: req.body?.password }));
+    res.json({ ok: true, connection: r.connId, sub: r.sub, returnTo: r.returnTo });
+  }));
+
   app.get('/api/audit', (_req, res) => res.json({ entries: audit.recent() }));
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
 

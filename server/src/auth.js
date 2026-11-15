@@ -113,6 +113,93 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
     return { authorizeUrl: `${authorizeEndpoint}?${q}`, state };
   }
 
+  // ---- pi.flow sign-in (redirect-free; the password step stays in this lab's own modal) ----
+  // The ceremony is the same as the redirect: authorization code + PKCE S256 + state + nonce, code-for-tokens at the
+  // same token endpoint, the id_token checked the same way. The difference is response_mode=pi.flow: the authorize
+  // request answers with a JSON flow instead of a redirect, the modal posts the password to it, and the finished flow
+  // hands back the code here (PingOne via /as/resume, PingFederate inline on COMPLETED). No redirect is ever followed
+  // or served. The password is a request body field used once in the flow call and kept nowhere.
+  const PI_FLOW_TIMEOUT_MS = 10_000;
+  const PF = { stepPath: (id) => `/pf-ws/authn/flows/${id}`, pwType: 'application/vnd.pingidentity.checkUsernamePassword+json', badCredentials: 'CREDENTIAL_VALIDATION_FAILED', csrf: 'PingFederate' };
+  const P1 = { stepPath: (id) => `/flows/${id}`, pwType: 'application/vnd.pingidentity.usernamePassword.check+json', badCredentials: 'INVALID_CREDENTIALS', csrf: null };
+  const FLOW_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
+  const piFlows = new Map(); // state -> { connId, flowId, verifier, nonce, redirectUri, returnTo, at, idp, cookies }
+  const piCfg = (idp) => (idp === 'pf' ? PF : P1);
+  const mergeCookies = (jar, res) => { for (const c of res.headers.getSetCookie?.() || []) { const [pair] = c.split(';'); const i = pair.indexOf('='); if (i > 0) jar.set(pair.slice(0, i).trim(), pair.slice(i + 1)); } return jar; };
+  const cookieHeader = (jar) => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+  const scrubTyped = (password, v) => (typeof password === 'string' && password.length >= 4 ? JSON.parse(JSON.stringify(v).split(JSON.stringify(password).slice(1, -1)).join('[the password]')) : v);
+
+  // Opens the flow (GET authorize with response_mode=pi.flow) and parks it. Returns { state, usernameHint }.
+  function startPiFlowLogin(conn, { idp, returnTo = '/' } = {}) {
+    if (conn.kind !== 'pingone' || conn.auth !== 'interactive') throw authError('not_interactive', 'this connection does not use interactive sign-in');
+    const eff = { ...conn, idp: idp === 'pf' ? 'pf' : conn.idp };
+    const authorizeEndpoint = ep(eff, 'authorize'); // throws pf_not_configured before any state exists
+    for (const [s, p] of piFlows) if (now() - p.at > stateTtlMs) piFlows.delete(s);
+    const state = b64u(crypto.randomBytes(24)); const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
+    const q = new URLSearchParams({ response_type: 'code', client_id: conn.clientId, redirect_uri: conn.redirectUri, scope: 'openid offline_access', state, nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' });
+    const url = `${authorizeEndpoint}?${q}`;
+    return { state, url, async open() {
+      let res;
+      try { res = await fetchImpl(url, { headers: { Accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(PI_FLOW_TIMEOUT_MS) }); }
+      catch (e) { throw authError('pi_flow_unreachable', `the authorization server did not answer (${e?.cause?.code || e?.code || 'network error'})`); }
+      const jar = mergeCookies(new Map(), res);
+      let flow = null; try { flow = JSON.parse((await res.text()).slice(0, 100_000)); } catch { /* not JSON */ }
+      if (res.status !== 200 || !FLOW_ID_RE.test(String(flow?.id || ''))) throw authError('pi_flow_unavailable', `the authorization server refused to open a sign-in flow (HTTP ${res.status}${flow?.error ? `: ${scrub(String(flow.error), [conn.clientSecret])}` : ''})`);
+      if (flow.status !== 'USERNAME_PASSWORD_REQUIRED' && flow.status !== 'COMPLETED') throw authError('pi_flow_step_unsupported', `the sign-on policy asks for a step this lab does not drive (only username and password) — got ${scrub(String(flow.status).slice(0, 40))}`);
+      piFlows.set(state, { connId: conn.id, flowId: String(flow.id), verifier, nonce, redirectUri: conn.redirectUri, returnTo, at: now(), idp: eff.idp, cookies: jar });
+      return { flowId: flow.id, status: flow.status, state };
+    } };
+  }
+
+  // Posts the password to the parked flow and, on COMPLETED, finishes the sign-in exactly like the redirect
+  // callback does (code for tokens, id_token verified). Resolves to completeLogin's result.
+  async function piFlowCredentials(conn, { state, username, password }) {
+    const p = piFlows.get(state);
+    if (!p) throw authError('bad_state', 'unknown or expired sign-in flow; start again');
+    piFlows.delete(state);
+    if (now() - p.at > stateTtlMs) throw authError('state_expired', 'sign-in took too long; start again');
+    if (typeof username !== 'string' || !username || username.length > 200) throw authError('bad_username', 'type the username (1 to 200 characters)');
+    if (typeof password !== 'string' || !password || password.length > 256) throw authError('bad_password', 'type the password (1 to 256 characters)');
+    const cfg = piCfg(p.idp);
+    const step = async () => {
+      const headers = { 'Content-Type': cfg.pwType, Accept: 'application/json', Cookie: cookieHeader(p.cookies), ...(cfg.csrf ? { 'X-XSRF-Header': cfg.csrf } : {}) };
+      let res;
+      try { res = await fetchImpl(`${baseOf({ ...conn, idp: p.idp }).replace(/\/as$/, '')}${cfg.stepPath(p.flowId)}`, { method: 'POST', headers, body: JSON.stringify({ username: username, password }), redirect: 'manual', signal: AbortSignal.timeout(PI_FLOW_TIMEOUT_MS) }); }
+      catch (e) { throw authError('pi_flow_unreachable', `the authorization server did not answer (${e?.cause?.code || e?.code || 'network error'})`); }
+      mergeCookies(p.cookies, res);
+      let body = null; try { body = JSON.parse((await res.text()).slice(0, 100_000)); } catch { /* not JSON */ }
+      return { res, body };
+    };
+    let r;
+    try { r = await step(); } finally { /* state consumed either way */ }
+    if (r.res.status === 400 || r.res.status === 401) {
+      const code = r.body?.details?.[0]?.code || r.body?.code || '';
+      if (code === cfg.badCredentials || code === 'VALIDATION_ERROR') throw authError('invalid_credentials', 'username or password is incorrect');
+      throw authError('pi_flow_refused', `the sign-in step failed (HTTP ${r.res.status}${code ? `: ${scrub(String(code).slice(0, 60))}` : ''})`);
+    }
+    if (r.res.status !== 200 || !r.body) throw authError('pi_flow_refused', `the sign-in step failed (HTTP ${r.res.status})`);
+    if (r.body.status !== 'COMPLETED') throw authError('pi_flow_step_unsupported', `the sign-on policy asks for a step after the password that this lab does not drive (for example MFA) — got ${scrub(String(r.body.status).slice(0, 40))}`);
+    // The code: inline on COMPLETED (PingFederate always; PingOne when the policy finishes without a resume hop),
+    // otherwise /as/resume with the flow's cookies.
+    let code = typeof r.body.authorizeResponse?.code === 'string' ? r.body.authorizeResponse.code : '';
+    const gotState = r.body.authorizeResponse?.state;
+    if (code && gotState !== undefined && gotState !== state) throw authError('bad_state', 'the flow came back for a different sign-in request; the lab refuses it');
+    if (!code && p.idp !== 'pf') {
+      let res;
+      try { res = await fetchImpl(`${baseOf({ ...conn, idp: p.idp })}/resume?flowId=${encodeURIComponent(p.flowId)}`, { headers: { Accept: 'application/json', Cookie: cookieHeader(p.cookies) }, redirect: 'manual', signal: AbortSignal.timeout(PI_FLOW_TIMEOUT_MS) }); }
+      catch (e) { throw authError('pi_flow_unreachable', `the authorization server did not answer (${e?.cause?.code || e?.code || 'network error'})`); }
+      let body = null; try { body = JSON.parse((await res.text()).slice(0, 100_000)); } catch { /* not JSON */ }
+      code = typeof body?.authorizeResponse?.code === 'string' ? body.authorizeResponse.code : '';
+      if (res.status !== 200 || !code) throw authError('pi_flow_refused', `the flow did not hand back an authorization code (HTTP ${res.status})`);
+    }
+    if (!code) throw authError('pi_flow_refused', 'the flow completed without an authorization code');
+    const json = await tokenRequest(conn, { grant_type: 'authorization_code', code, redirect_uri: p.redirectUri, client_id: conn.clientId, code_verifier: p.verifier }, { idp: p.idp });
+    if (!json.id_token) throw authError('bad_id_token', 'no id_token returned, so the nonce cannot be checked');
+    const claims = await verifyIdToken(conn, json.id_token, p.nonce, { idp: p.idp });
+    const rec = remember(conn, json); rec.sub = String(claims.sub || '').slice(0, 80) || null;
+    return { connId: conn.id, sub: rec.sub, returnTo: p.returnTo };
+  }
+
   async function verifyIdToken(conn, idToken, nonce, { idp } = {}) {
     const { header, claims, signed, sig } = decodeJwt(idToken);
     const eff = { ...conn, ...(idp ? { idp } : {}) };
@@ -159,5 +246,5 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, sta
   const resetAll = () => { tokens.clear(); pending.clear(); };
   const pendingConnId = (state) => pending.get(state)?.connId ?? null;
   const pendingReturnTo = (state) => pending.get(state)?.returnTo ?? '/';
-  return { accessToken, renew, status, secretsOf, allSecrets, startLogin, completeLogin, logout, resetAll, pendingConnId, pendingReturnTo, _pending: pending };
+  return { accessToken, renew, status, secretsOf, allSecrets, startLogin, completeLogin, logout, resetAll, pendingConnId, pendingReturnTo, _pending: pending, startPiFlowLogin, piFlowCredentials, _piFlows: piFlows };
 }

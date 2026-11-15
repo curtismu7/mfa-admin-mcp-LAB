@@ -64,6 +64,8 @@ export function createMock({ now = Date.now } = {}) {
   const tokens = new Map();   // access -> { role, exp, sub, clientId }
   const refreshes = new Map(); // refresh -> { role, sub, clientId }
   const codes = new Map();     // code -> { clientId, redirectUri, challenge, nonce, role, envId }
+  const flows = new Map();     // pi.flow: flowId -> { challenge, nonce, state, clientId, redirectUri, role, envId }
+  const mockFlows = () => flows;
   const clients = new Map();   // id -> { secret, role }  (unregistered ids are accepted offline)
   const freshTenant = () => ({
     users: [{ id: 'u1', username: 'sample.user', enabled: true }, { id: 'u2', username: 'other.user', enabled: true }],
@@ -205,11 +207,39 @@ export function createMock({ now = Date.now } = {}) {
     if (parts[1] === 'as' && parts[2] === 'authorize') {
       const q = url.searchParams;
       if (q.get('response_type') !== 'code' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge') || !q.get('state') || !q.get('nonce') || !q.get('redirect_uri')) return send(res, 400, { error: 'invalid_request' });
+      // pi.flow (2026-11-15): the browser never leaves. The authorize answers with a JSON flow, the modal posts the
+      // password, and the COMPLETED flow carries the code — the mock's only fixed credentials (owner, 2026-11-09):
+      // username "mock-admin", password "mock-password" (the sign-in dialog says so). A redirect login (no
+      // response_mode=pi.flow) keeps the old 302 behaviour.
+      if (q.get('response_mode') === 'pi.flow') {
+        const flows = mockFlows();
+        const id = crypto.randomBytes(8).toString('hex');
+        flows.set(id, { challenge: q.get('code_challenge'), nonce: q.get('nonce'), state: q.get('state'), clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), role: roleOf(q.get('client_id')), envId: parts[0] });
+        return send(res, 200, { id, status: 'USERNAME_PASSWORD_REQUIRED', _links: { self: { href: `${url.origin}${url.pathname.replace(/authorization\.oauth2$/, 'authorize')}` } } }, 'application/json', { 'Set-Cookie': `ST=${id}-st; Path=/` });
+      }
       const code = crypto.randomBytes(16).toString('hex');
       codes.set(code, { clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), challenge: q.get('code_challenge'), nonce: q.get('nonce'), role: roleOf(q.get('client_id')), envId: parts[0] });
       const back = new URL(q.get('redirect_uri'));
       back.search = new URLSearchParams({ code, state: q.get('state'), iss: issuer(parts[0]) }).toString();
       return send(res, 302, '', 'text/plain', { Location: back.toString() });
+    }
+    // The pi.flow password step: PingOne's vendor content type on /flows/{id}, PingFederate's on /pf-ws/authn/flows/{id}.
+    const pfFlow = /^\/([^/]+)\/pf-ws\/authn\/flows\/([a-f0-9]+)$/.exec(url.pathname);
+    const p1Flow = /^\/([^/]+)\/flows\/([a-f0-9]+)$/.exec(url.pathname);
+    if ((pfFlow || p1Flow) && req.method === 'POST') {
+      const [, envId, flowId] = pfFlow || p1Flow;
+      const flows = mockFlows();
+      const f = flows.get(flowId);
+      if (!f || !/ST=/.test(String(req.headers.cookie || ''))) return send(res, 401, { code: 'UNAUTHORIZED' });
+      const expected = pfFlow ? 'application/vnd.pingidentity.checkUsernamePassword+json' : 'application/vnd.pingidentity.usernamePassword.check+json';
+      if ((req.headers['content-type'] || '').split(';')[0] !== expected) return send(res, 415, { code: 'UNSUPPORTED_MEDIA_TYPE' });
+      if (pfFlow && !req.headers['x-xsrf-header']) return send(res, 403, { code: 'CSRF_REQUIRED' });
+      let b = {}; try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
+      if (b.username !== 'mock-admin' || b.password !== 'mock-password') return send(res, 400, { code: pfFlow ? 'CREDENTIAL_VALIDATION_FAILED' : 'INVALID_CREDENTIALS', details: [{ code: pfFlow ? 'CREDENTIAL_VALIDATION_FAILED' : 'INVALID_CREDENTIALS' }] });
+      flows.delete(flowId);
+      const code = crypto.randomBytes(16).toString('hex');
+      codes.set(code, { clientId: f.clientId, redirectUri: f.redirectUri, challenge: f.challenge, nonce: f.nonce, role: f.role, envId });
+      return send(res, 200, { id: flowId, status: 'COMPLETED', authorizeResponse: { code, state: f.state } });
     }
     return send(res, 404, { error: 'not_found' });
   }

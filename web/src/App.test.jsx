@@ -443,15 +443,38 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
   expect(within(pf).queryByTestId("pf-hint")).toBeNull();
 });
 
-test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
-  const message = "redirectUri must be https://proxy.example:8443/api/oauth/callback (or /callback), exactly as registered.";
+test("a sign-in that the server refuses says why in the pi.flow dialog", async () => {
+  const message = "the authorization server refused to open a sign-in flow (HTTP 400)";
   fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })],
-    handlers: { "POST /api/connections/:id/login/start": (_b, _s, json) => json(400, { error: "redirect_uri_invalid", message }) } });
+    handlers: {
+      "POST /api/connections/:id/login/pi-flow/start": (_b, _s, json) => json(502, { error: "pi_flow_unavailable", message }),
+      "POST /api/connections/:id/login/start": (_b, _s, json) => json(400, { error: "redirect_uri_invalid", message }),
+    } });
   const user = userEvent.setup();
   render(<App />);
   await user.click(await screen.findByRole("button", { name: "P1 login" }));
-  expect(await screen.findByTestId("login-err")).toHaveTextContent(message);
-  expect(within(screen.getByTestId("conn-card")).getByTestId("login-err")).toBeInTheDocument(); // in the card, not the visually-hidden live region
+  const dlg = await screen.findByTestId("piflow-signin");
+  expect(await within(dlg).findByText(message)).toBeInTheDocument();
+});
+
+test("the pi.flow sign-in dialog posts the credentials and closes on success", async () => {
+  const posts = [];
+  fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, offline: true, auth_status: { signedIn: false } })],
+    handlers: {
+      "POST /api/connections/:id/login/pi-flow/start": (b, s, json) => { posts.push(["start", b]); return json(200, { ok: true, state: "st-1", flowId: "flow1", status: "USERNAME_PASSWORD_REQUIRED" }); },
+      "POST /api/connections/:id/login/pi-flow/credentials": (b, s, json) => { posts.push(["credentials", b]); return json(200, { ok: true, connection: "c1", sub: "mock-admin-user" }); },
+    } });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "P1 login" }));
+  const dlg = await screen.findByTestId("piflow-signin");
+  // The offline demo prefills the mock username; the password is typed.
+  expect(await within(dlg).findByTestId("piflow-username")).toHaveValue("mock-admin");
+  await user.type(await within(dlg).findByTestId("piflow-password"), "mock-password");
+  await user.click(within(dlg).getByTestId("piflow-submit"));
+  await waitFor(() => expect(posts.map((p) => p[0])).toEqual(["start", "credentials"]));
+  const [, creds] = posts.find((p) => p[0] === "credentials");
+  expect(creds).toMatchObject({ state: "st-1", username: "mock-admin", password: "mock-password" });
 });
 
 test("the Test connection dialog lists the actual tools grouped by safety class, with the totals", async () => {

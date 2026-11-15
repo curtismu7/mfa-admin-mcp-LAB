@@ -4,6 +4,7 @@ import HealthCard from "../components/HealthCard.jsx";
 import Setup from "./Setup.jsx";
 import { DEMO_ENV_ID, redirectUriFor } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
+import PiFlowSignInModal from "../components/PiFlowSignInModal.jsx";
 
 const REGIONS = ["com", "eu", "asia", "ca"];
 const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", auth: "worker", endpointStyle: "api", idp: "pingone", idpBaseUrl: "", clientId: "", clientSecret: "", tokenAuthMethod: "basic", url: "", authHeader: "Authorization", token: "" };
@@ -114,12 +115,12 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
   async function act(fn, msg) { const r = await fn(); if (!r.ok) say(r.json?.message || "That did not work."); else if (msg) say(msg); onChange(); return r; }
   const [loginErr, setLoginErr] = useState("");
+  // The pi.flow modal: which provider it signs in to (null = closed).
+  const [piFlowIdp, setPiFlowIdp] = useState(null);
   async function signIn(idp) {
     setLoginErr("");
-    const r = await api.post(`/api/connections/${c.id}/login/start`, { idp, returnTo: window.location.pathname }); // returnTo: the callback returns here, not to "/" (the proxy sends that to the shelf)
-    if (!r.ok) { const m = r.json?.message || "Could not start sign-in."; say(m); setLoginErr(m); return; } // say() is a visually-hidden live region: show the reason beside the buttons too
-    say(idp === "pf" ? "Sending your browser to your PingFederate instance…" : "Sending your browser to PingOne's authorization server…");
-    window.location.assign(r.json.authorizeUrl);
+    // pi.flow first: the sign-in stays in a dialog. Any refusal the modal names, the redirect still covers.
+    setPiFlowIdp(idp === "pf" ? "pf" : "pingone");
   }
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
   const pfReady = c.offline === true || (c.idp === "pf" && Boolean(c.idpBaseUrl)); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
@@ -139,9 +140,9 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         {c.kind === "pingone" && c.auth === "interactive" && (st.signedIn
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
           : <span className="row">
-              <button type="button" onClick={() => signIn("pingone")} title="Interactive sign-in at PingOne's authorization server (authorization code + PKCE)">P1 login</button>
+              <button type="button" onClick={() => signIn("pingone")} title="Sign in at PingOne's authorization server, in a dialog (pi.flow; the redirect sign-in stays as the fallback)">P1 login</button>
               <button type="button" data-testid="pf-login" disabled={!pfReady} onClick={() => signIn("pf")}
-                title={pfReady ? "Interactive sign-in at PingFederate (authorization code + PKCE)" : PF_NEEDS}>PF login</button>
+                title={pfReady ? "Sign in at your PingFederate, in a dialog (pi.flow; the redirect sign-in stays as the fallback)" : PF_NEEDS}>PF login</button>
               {!pfReady && <small className="hint" data-testid="pf-hint">{PF_NEEDS}</small>}
             </span>)}
         {role && c.auth === "worker" && (
@@ -152,6 +153,14 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
       </div>
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}
+      {piFlowIdp && (
+        <PiFlowSignInModal
+          conn={c}
+          idp={piFlowIdp}
+          onDone={(connectionId) => { setPiFlowIdp(null); say("Signed in."); onChange(); onTest(connectionId, { modal: false }); }}
+          onClose={() => setPiFlowIdp(null)}
+        />
+      )}
       <label className={`writes${c.allowWrites ? " writes--on" : ""}`}>
         <input type="checkbox" checked={c.allowWrites} onChange={(e) => setWrites(e.target.checked)} />
         Allow writes for this connection {c.allowWrites ? "(ON: write and destructive calls can run after confirmation)" : "(off: read tools only)"}
