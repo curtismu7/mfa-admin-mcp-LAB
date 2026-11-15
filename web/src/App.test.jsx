@@ -155,19 +155,23 @@ test("wizard: secret is write-only, cleared after saving, and the card shows set
   expect(await screen.findByText(/secret: set/)).toBeInTheDocument();
 });
 
-test("interactive wizard shows the exact redirect URI with a working Copy button", async () => {
-  fakeApi({ conns: [] });
+test("interactive wizard says to use a public native app and shows the placeholder redirect URI with a working Copy button", async () => {
+  const REDIRECT = "http://localhost/mfa-admin-mcp-lab/pi-flow";
+  fakeApi({ conns: [], defaults: { envId: null, region: null, piFlowRedirectUri: REDIRECT } });
   const writeText = vi.fn(() => Promise.resolve());
   render(<App />);
   const user = userEvent.setup();
   await pressLive(user);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   await user.click(await screen.findByLabelText(/Interactive admin sign-in/));
-  const uri = screen.getByTestId("redirect-uri").textContent;
-  expect(uri).toMatch(/^http:\/\/localhost:\d*\/api\/oauth\/callback$|^http:\/\/localhost:80\/api\/oauth\/callback$/);
+  await waitFor(() => expect(screen.getByTestId("redirect-uri")).toHaveTextContent(REDIRECT));
   await user.click(screen.getByRole("button", { name: "Copy" }));
-  expect(writeText).toHaveBeenCalledWith(uri);
-  expect(screen.getByTestId("redirect-box")).toHaveTextContent(/UNVERIFIED/);
+  expect(writeText).toHaveBeenCalledWith(REDIRECT);
+  const box = screen.getByTestId("redirect-box");
+  expect(box).toHaveTextContent(/public native application/);
+  expect(box).toHaveTextContent(/pi\.flow/);
+  expect(box).toHaveTextContent(/UNVERIFIED/);
+  expect(box).not.toHaveTextContent(/api\/oauth\/callback/);
   expect(screen.queryByLabelText(/Client secret/)).toBeNull();
 });
 
@@ -351,7 +355,7 @@ test("diagram: Simulate walks steps with a live caption, Reset restores; speed c
   const diagMain = screen.getByRole("main");
   await user.click(within(diagMain).getByRole("button", { name: "Reset" }));
   expect(screen.getByTestId("caption")).toHaveTextContent(/Press Simulate/);
-  await waitFor(() => expect(screen.getByRole("option", { name: "Interactive admin sign-in (code + PKCE)" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("option", { name: "Interactive admin sign-in (pi.flow + PKCE)" })).toBeInTheDocument());
   await user.selectOptions(screen.getByLabelText("Sign-in model"), "interactive");
   await waitFor(() => expect(screen.getByRole("button", { name: "Simulate" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Simulate" }));
@@ -444,14 +448,78 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
 });
 
 test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
-  const message = "redirectUri must be https://proxy.example:8443/api/oauth/callback (or /callback), exactly as registered.";
+  const message = "the authorization server did not open a sign-in flow (HTTP 400: invalid_request: redirect_uri mismatch).";
   fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })],
-    handlers: { "POST /api/connections/:id/login/start": (_b, _s, json) => json(400, { error: "redirect_uri_invalid", message }) } });
+    handlers: { "POST /api/connections/:id/login/start": (_b, _s, json) => json(502, { error: "pi_flow_unavailable", message }) } });
   const user = userEvent.setup();
   render(<App />);
   await user.click(await screen.findByRole("button", { name: "P1 login" }));
   expect(await screen.findByTestId("login-err")).toHaveTextContent(message);
   expect(within(screen.getByTestId("conn-card")).getByTestId("login-err")).toBeInTheDocument(); // in the card, not the visually-hidden live region
+  expect(screen.queryByTestId("login-dialog")).toBeNull();
+});
+
+// A sign-in as the page sees it: login/start answers the first step, login/step answers the rest. The fake keeps the card's status in sync.
+function signInApi(over = {}) {
+  const mockLogin = { username: "mock.admin", password: "mock-password", otp: "123456" };
+  const steps = [];
+  const api = fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })], handlers: {
+    "POST /api/connections/:id/login/start": (_b, _s, json) => json(200, { ok: true, loginId: "login-1", step: "password", mockLogin }),
+    "POST /api/connections/:id/login/step": (b, st, json) => {
+      steps.push(b);
+      if (over.step) return over.step(b, st, json);
+      if (b.action === "password") return b.password === mockLogin.password ? json(200, { ok: true, step: "otp", devices: [{ id: "d1", type: "SMS", nickname: null, target: "+1 *** 0142" }], selectedDeviceId: "d1" }) : json(401, { error: "invalid_credentials", message: "Username or password is incorrect." });
+      st.conns[0].auth_status = { signedIn: true, as: "mock-admin-user", expiresAt: Date.now() + 3_600_000 };
+      return json(200, { ok: true, step: "done", as: "mock-admin-user" });
+    },
+  } });
+  return { api, steps, mockLogin };
+}
+
+test("P1 login opens a dialog (no redirect): password, then the one-time code, then the card shows signed in", async () => {
+  const { api, steps } = signInApi();
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "P1 login" }));
+  const dlg = await screen.findByTestId("login-dialog");
+  expect(within(dlg).getByTestId("login-mock")).toHaveTextContent(/mock\.admin.*mock-password.*123456/);
+  expect(within(dlg).getByTestId("login-username")).toHaveValue("mock.admin"); // the mock account is filled in
+  const pw = within(dlg).getByTestId("login-password");
+  await user.clear(pw); await user.type(pw, "wrong-password");
+  await user.click(within(dlg).getByTestId("login-submit"));
+  expect(await within(dlg).findByTestId("login-error")).toHaveTextContent(/incorrect/);
+  expect(within(dlg).getByTestId("login-password")).toHaveValue(""); // cleared as soon as it was sent
+  expect(dlg).not.toHaveTextContent("wrong-password");
+  await user.type(within(dlg).getByTestId("login-password"), "mock-password");
+  await user.click(within(dlg).getByTestId("login-submit"));
+  expect(await within(dlg).findByTestId("login-otp-where")).toHaveTextContent(/text message/);
+  await user.click(within(dlg).getByTestId("login-submit"));
+  await waitFor(() => expect(screen.queryByTestId("login-dialog")).toBeNull());
+  expect(steps.map((x) => x.action)).toEqual(["password", "password", "otp"]);
+  expect(steps.every((x) => x.loginId === "login-1")).toBe(true);
+  expect(steps[2]).toEqual({ loginId: "login-1", action: "otp", otp: "123456" });
+  expect(await screen.findByRole("button", { name: /Sign out \(mock-admin-user\)/ })).toBeInTheDocument();
+  expect(api.calls.every((c) => c.url.startsWith("/api/"))).toBe(true); // the page only ever talked to this app's own server
+});
+
+test("sign-in with two devices asks which one; a step the lab cannot show ends the sign-in with the reason and offers no redirect", async () => {
+  const devices = [{ id: "d-sms", type: "SMS", target: "+1 *** 0142" }, { id: "d-mail", type: "EMAIL", target: "a@example.invalid" }];
+  const { steps } = signInApi({ step: (b, st, json) => (b.action === "password" ? json(200, { ok: true, step: "device", devices })
+    : b.action === "device" ? json(409, { error: "login_unsupported", message: "the sign-on policy asked for a step this lab cannot show (ASSERTION_REQUIRED). Passkeys and external sign-in are not supported here; there is no redirect fallback." }) : json(400, {})) });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "P1 login" }));
+  const dlg = await screen.findByTestId("login-dialog");
+  await user.click(within(dlg).getByTestId("login-submit"));
+  expect(await within(dlg).findByTestId("login-device-1")).toBeInTheDocument();
+  await user.click(within(dlg).getByTestId("login-device-1"));
+  await user.click(within(dlg).getByTestId("login-submit"));
+  expect(await within(dlg).findByTestId("login-error")).toHaveTextContent(/no redirect fallback/);
+  expect(dlg).toHaveTextContent(/sign-in is over/);
+  expect(within(dlg).queryByTestId("login-submit")).toBeNull();
+  expect(steps[1]).toEqual({ loginId: "login-1", action: "device", deviceId: "d-mail" });
+  await user.click(within(dlg).getByTestId("login-cancel"));
+  expect(screen.queryByTestId("login-dialog")).toBeNull();
 });
 
 test("the Test connection dialog lists the actual tools grouped by safety class, with the totals", async () => {

@@ -6,7 +6,7 @@ One Node 26 ESM process (Express) serves the JSON API and the built web app (Rea
 browser  --same-origin-->  server (loopback)  --Bearer-->  hosted PingOne MCP server  (or any HTTP MCP server)
    ^                          |  gate + audit
    |                          +--client_credentials / code+PKCE-->  PingOne token / authorization endpoint
-   +-- sign-in redirect (interactive only, to PingOne's authorization server, and back to the loopback redirect URI)
+   +-- sign-in flow (interactive only: this server drives PingOne's native flow, pi.flow, step by step; no redirect)
 ```
 
 The same picture is the app's Diagram page (ReactFlow: movable boxes, Simulate, Reset, speed). Its boxes and arrows are not in the page: they are diagram-studio/1 data (`server/diagrams/worker.json` and `interactive.json`), checked when the server starts and fetched by name from `GET /api/diagrams/:name`.
@@ -18,7 +18,7 @@ The same picture is the app's Diagram page (ReactFlow: movable boxes, Simulate, 
 | `app.js` | Routes, the gate wiring, scan route, static web app. |
 | `diagrams.js`, `diagramStudioValidate.js` | Loads `server/diagrams/*.json` (diagram-studio/1) from a fixed name list, validates each with a copy of the studio's validator, and refuses to start on a bad file. Serves them by name. |
 | `store.js` | Connections file (mode 600, dir 700). Secrets write-only; `publicView` strips them. |
-| `auth.js` | Worker `client_credentials`; interactive code + PKCE, state, nonce, iss, jwks check; refresh; logout. Tokens live in memory only. |
+| `auth.js` | Worker `client_credentials`; interactive pi.flow (native flow: code + PKCE, nonce, iss, aud, jwks check; password / device / code steps); refresh; logout. Tokens live in memory only. |
 | `mcpClient.js` | HTTP MCP client: JSON or one SSE frame, size cap, no redirects, 401 then refresh then retry once. |
 | `classify.js` | read / write / destructive, annotations then name heuristic, unknown = write. |
 | `gate.js` | `decide()` (writes off, confirm, argsHash, typed name) and the audit log (`audit.jsonl`, redacted). |

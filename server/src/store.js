@@ -66,12 +66,14 @@ export function createStore({ dir }) {
         if (!rec.clientSecret) throw new Error('clientSecret is required for worker auth');
         rec.tokenAuthMethod = b.tokenAuthMethod === 'post' ? 'post' : 'basic';
       } else {
+        // pi.flow serves no callback, so a redirect URI is optional (the lab sends its own placeholder). A value kept from before pi.flow,
+        // or one a custom application insists on, must still be a URL: http loopback, or https.
         rec.redirectUri = str(b.redirectUri, 300);
-        if (!rec.redirectUri) throw new Error('redirectUri is required for interactive auth (the loopback URI registered on your OAuth application)');
-        let ru; try { ru = new URL(rec.redirectUri); } catch { ru = null; }
-        // http loopback (direct/proxy port) or https (the lab-proxy has a real certificate; PingOne requires https for non-localhost hosts)
-        const okCb = ru && ((ru.protocol === 'http:' && isLoopbackHost(ru.hostname)) || ru.protocol === 'https:');
-        if (!okCb) throw new Error('redirectUri must be an http loopback URI (http://localhost:7815/api/oauth/callback) or an https URI');
+        if (rec.redirectUri) {
+          let ru; try { ru = new URL(rec.redirectUri); } catch { ru = null; }
+          const okCb = ru && ((ru.protocol === 'http:' && isLoopbackHost(ru.hostname)) || ru.protocol === 'https:');
+          if (!okCb) throw new Error('redirectUri must be an http loopback URI or an https URI');
+        }
       }
     } else {
       rec.url = cleanUrl(b.url);

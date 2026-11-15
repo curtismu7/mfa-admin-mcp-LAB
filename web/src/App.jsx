@@ -45,7 +45,7 @@ function Shell() {
   const [now, setNow] = useState(Date.now());
   const [theme, setTheme] = useState(() => store.get("mfaadm.theme") || "system");
   const [info, setInfo] = useState(null); // GET /api/info; null = not known yet
-  const [defaults, setDefaults] = useState({ envId: null, region: null }); // the default environment from worker.env, to pre-fill forms
+  const [defaults, setDefaults] = useState({ envId: null, region: null, piFlowRedirectUri: null }); // the default environment from worker.env, to pre-fill forms, and the placeholder redirect URI
   const [mode, setModeState] = useState("mock");
   const [refusal, setRefusal] = useState("");
   const [epoch, setEpoch] = useState(0); // bumped by Reset: remounts the page, so the diagram boxes and form fields start over
@@ -100,21 +100,16 @@ function Shell() {
     setTs({ id, tools: r.ok ? r.json.tools : [], loading: false, error: r.ok ? "" : r.status === 401 ? "Sign in first (interactive connection)." : r.json?.message || "Could not list tools." });
   }, []);
 
-  useEffect(() => { api.get("/api/setup/defaults").then((r) => { if (r.ok) setDefaults({ envId: r.json.envId || null, region: r.json.region || null }); }); }, []);
+  useEffect(() => { api.get("/api/setup/defaults").then((r) => { if (r.ok) setDefaults({ envId: r.json.envId || null, region: r.json.region || null, piFlowRedirectUri: r.json.piFlowRedirectUri || null }); }); }, []);
 
-  // First load, and the return from PingOne's authorization server (?login=ok&connection=...).
+  // First load.
   useEffect(() => {
     (async () => {
       const list = await reload();
-      const q = new URLSearchParams(window.location.search);
-      if (q.get("login")) {
-        window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-        if (q.get("login") === "ok" && list.some((c) => c.id === q.get("connection"))) { select(q.get("connection")); say("Signed in."); runTest(q.get("connection"), { modal: false }); }
-        else say(`Sign-in failed (${q.get("reason") || "error"}). Nothing was stored.`);
-      } else if (!list.some((c) => c.id === store.get("mfaadm.active"))) setActiveId(list[0]?.id ?? null);
-      const want = q.get("connection") || (list.some((c) => c.id === store.get("mfaadm.active")) ? store.get("mfaadm.active") : list[0]?.id);
+      if (!list.some((c) => c.id === store.get("mfaadm.active"))) setActiveId(list[0]?.id ?? null);
+      const want = list.some((c) => c.id === store.get("mfaadm.active")) ? store.get("mfaadm.active") : list[0]?.id;
       const offline = list.find((c) => c.id === want && c.offline && c.auth === "worker");
-      if (offline && !q.get("login")) runTest(offline.id, { modal: false }); // the mock demo is safe to test on its own; a real server waits for the button
+      if (offline) runTest(offline.id, { modal: false }); // the mock demo is safe to test on its own; a real server waits for the button
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

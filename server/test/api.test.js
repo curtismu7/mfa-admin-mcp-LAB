@@ -23,13 +23,14 @@ test('health is demo-health/1 exactly, public, no-store', async () => {
   assert.deepEqual(Object.keys(r.json.demo).sort(), ['id', 'name', 'version']);
   assert.equal((await s.call('POST', '/api/health', {})).status, 405);
 });
-test('connections: region is an allowlist (opt-in for others) and a non-loopback redirectUri is refused at create', async () => {
+test('connections: region is an allowlist (opt-in for others) and a non-loopback redirectUri is refused at create (none at all is fine)', async () => {
   assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'com.xyz' }))).status, 400);
   assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'com.xyz', regionOther: true }))).status, 201);
   assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'eu' }))).status, 201);
   const inter = (redirectUri) => ({ ...workerConn(), auth: 'interactive', redirectUri });
   assert.equal((await s.call('POST', '/api/connections', inter('http://evil.com/api/oauth/callback'))).status, 400);
   assert.equal((await s.call('POST', '/api/connections', inter('http://localhost:7815/api/oauth/callback'))).status, 201);
+  assert.equal((await s.call('POST', '/api/connections', inter(undefined))).status, 201);
 });
 test('connections: validation, secrets write-only, file mode 600 in a 700 dir', async () => {
   assert.equal((await s.call('POST', '/api/connections', { kind: 'pingone', envId: 'nope', clientId: 'x', clientSecret: 'y' })).status, 400);
@@ -133,26 +134,32 @@ test('401 from the server mid-session: the token is renewed and the call retried
   s.mock.tokens.clear();
   assert.equal((await s.call('POST', url, { tool: 'listUsers', arguments: {} })).status, 200);
 });
-test('interactive login over HTTP: start is same-origin only, callback lands once, logout clears', async () => {
-  const port = new URL(s.origin).port;
-  const redirectUri = `http://localhost:${port}/api/oauth/callback`;
-  const c = await add({ auth: 'interactive', clientSecret: undefined, redirectUri });
+test('interactive login over HTTP (pi.flow): start is same-origin only, the steps run once each, bad input is refused, logout clears', async () => {
+  const c = await add({ auth: 'interactive', clientSecret: undefined });
+  assert.ok(!c.redirectUri, 'no redirect URI is needed');
   const bad = await s.call('POST', `/api/connections/${c.id}/login/start`, {}, { origin: 'http://evil.example' });
   assert.equal(bad.status, 403);
-  const wrong = await add({ auth: 'interactive', clientSecret: undefined, redirectUri: 'http://localhost:1/api/oauth/callback' });
-  assert.equal((await s.call('POST', `/api/connections/${wrong.id}/login/start`, {})).json.error, 'redirect_uri_invalid');
   assert.equal((await s.call('GET', `/api/connections/${c.id}/tools`)).json.error, 'login_required');
+  assert.equal((await s.call('POST', `/api/connections/${(await add()).id}/login/start`, {})).json.error, 'not_interactive');
   const start = await s.call('POST', `/api/connections/${c.id}/login/start`, {});
-  const authz = await fetch(start.json.authorizeUrl, { redirect: 'manual' });
-  const back = new URL(authz.headers.get('location'));
-  const cbUrl = `http://localhost:${port}${back.pathname}${back.search}`;
-  const cb = await fetch(cbUrl, { redirect: 'manual' });
-  assert.equal(cb.status, 302); assert.match(cb.headers.get('location'), /login=ok/);
+  assert.equal(start.status, 200, start.text);
+  assert.equal(start.json.step, 'password'); assert.ok(start.json.loginId);
+  assert.equal(start.json.authorizeUrl, undefined, 'no redirect URL is handed to the browser');
+  assert.deepEqual(Object.keys(start.json.mockLogin).sort(), ['otp', 'password', 'username'], 'the mock connection says which mock account to use');
+  const step = (b, id = c.id) => s.call('POST', `/api/connections/${id}/login/step`, { loginId: start.json.loginId, ...b });
+  for (const malformed of [{}, { action: 'nope' }, { action: 'password', username: 'u' }, { action: 'password', username: 'u', password: 'x'.repeat(2000) }, { action: 'otp', otp: '12' }, { action: 'otp', otp: 123456 }, { action: 'device', deviceId: '../x' }]) {
+    const r = await step(malformed); assert.equal(r.status, 400, JSON.stringify(malformed)); assert.equal(r.json.error, 'bad_request');
+  }
+  assert.equal((await s.call('POST', `/api/connections/${c.id}/login/step`, { action: 'otp', otp: '123456', loginId: 'forged' })).json.error, 'login_expired');
+  const wrong = await step({ action: 'password', username: start.json.mockLogin.username, password: 'wrong' });
+  assert.equal(wrong.status, 401); assert.equal(wrong.json.error, 'invalid_credentials'); assert.ok(!wrong.text.includes('wrong'));
+  assert.equal((await step({ action: 'password', username: start.json.mockLogin.username, password: start.json.mockLogin.password })).json.step, 'otp');
+  assert.equal((await step({ action: 'otp', otp: '000000' })).json.error, 'invalid_otp');
+  assert.equal((await step({ action: 'otp', otp: start.json.mockLogin.otp })).json.step, 'done');
   const view = (await s.call('GET', '/api/connections')).json.connections.find((x) => x.id === c.id);
   assert.equal(view.auth_status.signedIn, true); assert.equal(view.auth_status.as, 'mock-admin-user'); assert.ok(view.auth_status.expiresAt);
   assert.equal((await s.call('GET', `/api/connections/${c.id}/tools`)).status, 200);
-  const replay = await fetch(cbUrl, { redirect: 'manual' });
-  assert.match(replay.headers.get('location'), /login=error&reason=bad_state/);
+  assert.equal((await step({ action: 'otp', otp: start.json.mockLogin.otp })).json.error, 'login_expired', 'a finished sign-in cannot be replayed');
   await s.call('POST', `/api/connections/${c.id}/logout`, {});
   assert.equal((await s.call('GET', `/api/connections/${c.id}/tools`)).json.error, 'login_required');
 });

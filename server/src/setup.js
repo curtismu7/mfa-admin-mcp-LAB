@@ -1,16 +1,20 @@
 // Tenant setup: use a Management worker token (pasted once, never stored) to
-// find or create the OAuth app the lab's interactive sign-in needs, register
-// this lab's callback on it, and hand back the values for a saved connection.
+// find or create the OAuth app the lab's interactive sign-in needs, and hand
+// back the values for a saved connection.
 //
 // What the hosted PingOne MCP actually needs (from the family's measurements,
 // demo_api_server/services/mcpPingOneHttpAdapter.js): an authorization-code +
 // PKCE token minted in the SAME environment the endpoint serves; roles ride on
-// the signed-in user, not the app. So the app is a plain public OAuth client:
-// AUTHORIZATION_CODE + REFRESH_TOKEN, tokenEndpointAuthMethod NONE, PKCE
-// S256_REQUIRED, response type CODE. No roles on the app, no secret.
+// the signed-in user, not the app. The sign-in is a native flow (pi.flow, rule 16),
+// so the app is a PUBLIC native application of its own, not the family's admin app
+// (a confidential client, which needs a secret this lab never holds): NATIVE_APP,
+// AUTHORIZATION_CODE + REFRESH_TOKEN, tokenEndpointAuthMethod NONE, PKCE S256_REQUIRED,
+// response type CODE. No roles on the app, no secret. It names one redirect URI
+// (PI_FLOW_REDIRECT_URI) that PingOne requires but nothing serves.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PI_FLOW_REDIRECT_URI } from './auth.js';
 import { liveRefusal } from './config.js';
 import { permit } from './netguard.js';
 import { validEnvId, validRegion } from './urls.js';
@@ -40,7 +44,7 @@ export function workerDefaults(env = process.env) {
   const v = parseWorkerEnvFile(env) || {};
   const envId = v.PINGONE_ENV_ID || env.PINGONE_ENVIRONMENT_ID || '';
   const region = String(v.PINGONE_REGION || env.PINGONE_REGION || '').toLowerCase();
-  return { envId: validEnvId(envId) ? envId : null, region: validRegion(region) ? region : null };
+  return { envId: validEnvId(envId) ? envId : null, region: validRegion(region) ? region : null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI };
 }
 
 export function readWorkerEnv(env = process.env) {
@@ -50,8 +54,9 @@ export function readWorkerEnv(env = process.env) {
   return { clientId: v.PINGONE_CLIENT_ID, clientSecret: v.PINGONE_CLIENT_SECRET, envId: v.PINGONE_ENV_ID || null, region: (v.PINGONE_REGION || '').toLowerCase() || null };
 }
 
-const APP_NAME = 'MFA Admin MCP LAB (sign-in)';
-const CALLBACK = '/api/oauth/callback';
+// PingOne's rules for these two fields (measured 2026-11-15 on a real create): a name allows only letters, numbers, spaces, / . ' _ - (so no
+// parentheses); a description refuses $ + < = > ^ ` | ~.
+const APP_NAME = 'MFA Admin MCP LAB sign-in';
 
 const j = (r) => r.json().then((b) => ({ status: r.status, b }), () => ({ status: r.status, b: null }));
 
@@ -87,11 +92,7 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
     let probe;
     try { probe = await withPermit(`auth.pingone.${region}`, async () => j(await fetchImpl(discovery, { signal: AbortSignal.timeout(10_000) }))); } catch { probe = { status: 0, b: null }; }
     if (probe.status !== 200) return res.json({ ok: false, stage: 'environment', message: probe.status === 404 ? 'No such environment (or the region is wrong).' : probe.status === 0 ? 'The environment endpoint was unreachable (network).' : `The environment endpoint answered ${probe.status}. Check the region and the id.` });
-    const name = 'the environment';
-    // The callback this lab will demand, on the browser's own origin:
-    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim();
-    const port = host.split(':').pop();
-    return res.json({ ok: true, environment: name, region, envId, callback: `http://localhost:${port}${CALLBACK}`, workerEnv: Boolean(w) });
+    return res.json({ ok: true, environment: 'the environment', region, envId, redirectUri: PI_FLOW_REDIRECT_URI, workerEnv: Boolean(w) });
   });
 
   app.post('/api/setup/apply', async (req, res) => {
@@ -112,31 +113,27 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
     } catch { t = { status: 0, b: null }; }
     if (t.status !== 200 || !t.b?.access_token) return res.status(401).json({ error: 'worker_refused', message: `The Management worker token was refused (${t.status}). Check the client id and secret, the region and the environment.` });
     const H = { 'content-type': 'application/json', authorization: `Bearer ${t.b.access_token}` };
-    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim();
-    const callback = `http://localhost:${host.split(':').pop()}${CALLBACK}`;
-    // Find our app, or any app that already carries the callback:
+    // Find our app by name:
     let apps;
     try { apps = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications?limit=100`, { headers: H, signal: AbortSignal.timeout(10_000) }))); } catch { apps = { status: 0, b: null }; }
     if (apps.status !== 200) return res.status(502).json({ error: 'api_error', message: `Listing applications failed (${apps.status}). The worker may lack a role that can read applications.` });
-    const ours = (apps.b?._embedded?.applications || []).find((a) => a.name === APP_NAME);
-    const bearer = (apps.b?._embedded?.applications || []).find((a) => a.type === 'WEB_APP' && (a.redirectUris || []).map(bare).includes(callback));
-    let app = ours || bearer;
+    let app = (apps.b?._embedded?.applications || []).find((a) => a.name === APP_NAME);
     let created = false;
     if (!app) {
-      const body = { name: APP_NAME, description: 'Interactive sign-in for the MFA Admin MCP LAB (authorization code + PKCE; roles ride on the signed-in user).', enabled: true, type: 'WEB_APP', protocol: 'OPENID_CONNECT', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], tokenEndpointAuthMethod: 'NONE', pkceEnforcement: 'S256_REQUIRED', redirectUris: [callback] };
+      const body = { name: APP_NAME, description: 'Interactive sign-in for the MFA Admin MCP LAB (PingOne native flow, pi.flow, authorization code with PKCE; roles ride on the signed-in user).', enabled: true, type: 'NATIVE_APP', protocol: 'OPENID_CONNECT', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], tokenEndpointAuthMethod: 'NONE', pkceEnforcement: 'S256_REQUIRED', redirectUris: [PI_FLOW_REDIRECT_URI] };
       const r = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications`, { method: 'POST', headers: H, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) }).catch(() => ({ status: 0, b: null }))));
       if (r.status !== 201) return res.status(502).json({ error: 'api_error', message: `Creating the sign-in application failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
       app = r.b; created = true;
-    } else if (!(app.redirectUris || []).map(bare).includes(callback)) {
-      // Register the callback on the existing app: GET, merge, full PUT of the writable subset.
-      const uris = (app.redirectUris || []).map(bare).concat(callback);
+    } else if (!(app.redirectUris || []).map(bare).includes(PI_FLOW_REDIRECT_URI)) {
+      // Register the redirect URI on the existing app: GET, merge, full PUT of the writable subset.
+      const uris = (app.redirectUris || []).map(bare).concat(PI_FLOW_REDIRECT_URI);
       const r = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications/${app.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ ...writable(app), redirectUris: uris }), signal: AbortSignal.timeout(10_000) }).catch(() => ({ status: 0, b: null }))));
-      if (r.status !== 200) return res.status(502).json({ error: 'api_error', message: `Adding the callback to "${app.name}" failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
+      if (r.status !== 200) return res.status(502).json({ error: 'api_error', message: `Adding the redirect URI to "${app.name}" failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
       app = r.b;
     }
     return res.json({
-      ok: true, created, appName: app.name, clientId: app.id, callback,
-      connection: { kind: 'pingone', region, envId, auth: 'interactive', clientId: app.id, redirectUri: callback, label: 'PingOne hosted MCP (set up)' },
+      ok: true, created, appName: app.name, clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI,
+      connection: { kind: 'pingone', region, envId, auth: 'interactive', clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI, label: 'PingOne hosted MCP (set up)' },
     });
   });
 }

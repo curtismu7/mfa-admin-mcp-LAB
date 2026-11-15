@@ -5,7 +5,7 @@ import http from 'node:http';
 import test from 'node:test';
 import { createApp } from '../src/app.js';
 import { allPassed, runChecks } from '../src/doctor.js';
-import { allowedHostNames, browserOrigin, labAllowedHosts, safeReturnTo } from '../src/security.js';
+import { allowedHostNames, labAllowedHosts } from '../src/security.js';
 import { startApp, workerConn } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
@@ -92,55 +92,21 @@ test('behind the lab-proxy: a write is accepted only with the proxy\'s forwarded
   }
 });
 
-test('browserOrigin believes X-Forwarded-* only for a LAB_ALLOWED_HOSTS Host; safeReturnTo keeps plain same-origin paths only', () => {
-  const req = (headers) => ({ headers });
-  const lab = new Set([PROXY_HOST]);
-  const proxied = { host: `${PROXY_HOST}:7815`, ...FWD };
-  assert.equal(browserOrigin(req(proxied), lab), PROXY_ORIGIN);
-  assert.equal(browserOrigin(req({ host: '127.0.0.1:7815', ...FWD }), lab), 'http://127.0.0.1:7815', 'a loopback Host cannot borrow forwarded headers');
-  assert.equal(browserOrigin(req(proxied), new Set()), `http://${PROXY_HOST}:7815`, 'no LAB_ALLOWED_HOSTS: forwarded headers are ignored');
-  assert.equal(browserOrigin(req({ ...proxied, 'x-forwarded-proto': 'ftp' }), lab), `http://${PROXY_HOST}:7815`);
-  for (const ok of ['/', '/mfa-admin-mcp/', '/mfa-admin-mcp', '/a/b/']) assert.equal(safeReturnTo(ok), ok);
-  for (const bad of [undefined, '', 'mfa', '//evil.example', 'https://evil.example', '/\\evil', '/a/../b', '/./a', '/a?x', '/a#x', '/a b', '/%2e%2e/', `/${'a'.repeat(300)}`, 5, {}]) assert.equal(safeReturnTo(bad), '/', String(bad));
-});
-
-test('behind the lab-proxy: a connection saved with a localhost redirect URI is refused with the proxy\'s https callback named, and the right one signs in', async () => {
+test('behind the lab-proxy: the sign-in steps are same-origin writes like any other, and need no callback URL (pi.flow has none)', async () => {
   const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
   try {
+    const c = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined })).json;
     const host = `${PROXY_HOST}:7815`;
-    const start = (id) => call(s.port, 'POST', `/api/connections/${id}/login/start`, { host, headers: { ...FWD, origin: PROXY_ORIGIN }, body: { returnTo: '/mfa-admin-mcp/' } });
-    const stale = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, redirectUri: 'http://localhost:7815/api/oauth/callback' })).json;
-    const refused = await start(stale.id);
-    assert.equal(refused.status, 400);
-    const { error, message } = JSON.parse(refused.body);
-    assert.equal(error, 'redirect_uri_invalid');
-    assert.ok(message.includes(`${PROXY_ORIGIN}/api/oauth/callback`), message);
-    assert.ok(message.includes('http://localhost:7815/api/oauth/callback'), 'says what the connection has now');
-    assert.ok(!message.includes('http://localhost:8443'), 'no longer sends people to a localhost callback the browser cannot reach');
-    const good = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, redirectUri: `${PROXY_ORIGIN}/api/oauth/callback` })).json;
-    assert.equal((await start(good.id)).status, 200);
-  } finally { await s.close(); }
-});
-
-test('behind the lab-proxy: the OAuth callback is judged by the browser\'s URL and returns to the page the sign-in started from', async () => {
-  const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
-  try {
-    const c = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, redirectUri: `${PROXY_ORIGIN}/api/oauth/callback` })).json;
-    const host = `${PROXY_HOST}:7815`;
-    // what the browser does: start sign-in from a page, follow the authorization server's redirect back to the proxy's /api/oauth/callback
-    const signIn = async (returnTo, fwd = FWD) => {
-      const start = await call(s.port, 'POST', `/api/connections/${c.id}/login/start`, { host, headers: { ...FWD, origin: PROXY_ORIGIN }, body: { returnTo } });
-      assert.equal(start.status, 200, start.body);
-      const authz = await fetch(JSON.parse(start.body).authorizeUrl, { redirect: 'manual' });
-      const back = new URL(authz.headers.get('location'));
-      return call(s.port, 'GET', `${back.pathname}${back.search}`, { host, headers: fwd });
-    };
-    const ok = await signIn('/mfa-admin-mcp/');
-    assert.equal(ok.status, 302);
-    assert.equal(ok.headers.location, `/mfa-admin-mcp/?login=ok&connection=${encodeURIComponent(c.id)}`, 'not "/", which the proxy sends to the shelf');
-    for (const hostile of ['//evil.example', 'https://evil.example/', '/\\evil', '/a/../b', '/a?x=1']) assert.match((await signIn(hostile)).headers.location, /^\/\?login=ok/, hostile);
-    assert.equal((await signIn(undefined)).headers.location.slice(0, 10), '/?login=ok', 'no returnTo: the old behaviour');
-    const wrong = await signIn('/mfa-admin-mcp/', { 'x-forwarded-host': 'evil.example.com', 'x-forwarded-proto': 'https' });
-    assert.equal(wrong.headers.location, '/mfa-admin-mcp/?login=error&reason=redirect_mismatch', 'a callback that did not arrive on the registered URL still fails, and still returns to the app');
+    const post = (p, body, headers = { ...FWD, origin: PROXY_ORIGIN }) => call(s.port, 'POST', `/api/connections/${c.id}/${p}`, { host, headers, body });
+    const start = await post('login/start', {});
+    assert.equal(start.status, 200, start.body);
+    const { loginId, step, mockLogin } = JSON.parse(start.body);
+    assert.equal(step, 'password');
+    assert.equal((await post('login/step', { loginId, action: 'password', username: mockLogin.username, password: 'wrong' })).status, 401);
+    assert.equal((await post('login/step', { loginId, action: 'password', username: mockLogin.username, password: mockLogin.password })).status, 200);
+    const done = await post('login/step', { loginId, action: 'otp', otp: mockLogin.otp });
+    assert.equal(JSON.parse(done.body).step, 'done', done.body);
+    // a foreign origin cannot drive a sign-in
+    assert.equal((await post('login/start', {}, { ...FWD, origin: 'https://evil.example.com' })).status, 403);
   } finally { await s.close(); }
 });

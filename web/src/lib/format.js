@@ -61,14 +61,6 @@ export function countdown(expiresAt, now) {
   return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
 }
 
-/** The exact redirect URI to register on the OAuth application: this page's own loopback port. */
-// The callback the browser will actually land on. On a loopback page that is http://localhost:<port> (what PingOne apps register);
-// behind the lab-proxy the page is on https://<proxy host>:<port>, and the callback is accepted only on that exact URL.
-const LOOPBACK_NAMES = new Set(["", "localhost", "127.0.0.1", "[::1]"]);
-export const redirectUriFor = (loc = window.location) => (LOOPBACK_NAMES.has(loc.hostname || "")
-  ? `http://localhost:${loc.port || "80"}/api/oauth/callback`
-  : `${loc.protocol}//${loc.host}/api/oauth/callback`);
-
 export const DEMO_ENV_ID = "11111111-2222-4333-8444-555555555555"; // placeholder, not a tenant
 /** The mock demo: a PingOne connection that talks to the in-process mock. Every other saved connection is Live. */
 export const isMockConn = (c) => Boolean(c) && c.kind === "pingone" && c.offline === true;

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
+import { PI_FLOW_REDIRECT_URI } from '../src/auth.js';
 import { startApp, tmpDir } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
@@ -23,7 +24,7 @@ async function stubFetch(url, init = {}) {
   }
   if (url.includes('/applications') && (init.method || 'GET') === 'POST') {
     const body = JSON.parse(init.body);
-    return Response.json({ id: 'new-app-id', name: body.name, type: 'WEB_APP', redirectUris: body.redirectUris }, { status: 201 });
+    return Response.json({ id: 'new-app-id', name: body.name, type: body.type, redirectUris: body.redirectUris }, { status: 201 });
   }
   if (url.includes('/applications') && (init.method || 'GET') === 'PUT') {
     const body = JSON.parse(init.body);
@@ -42,14 +43,13 @@ let s;
 before(async () => { s = await startApp({ env: { MFAADM_BIND: '0.0.0.0', MFAADM_STUB_BASE: STUB_BASE }, fetchImpl: stubFetch, dir: tmpDir() }); });
 after(async () => { await s.close(); assert.deepEqual(guard.attempts, [], 'zero outbound attempts beyond the stub'); guard.restore(); });
 
-test('check: a bad env id is a 400; a good one reports the environment and the callback', async () => {
+test('check: a bad env id is a 400; a good one reports the environment and the redirect URI it will register', async () => {
   assert.equal((await s.call('POST', '/api/setup/check', { envId: 'nope' })).status, 400);
   const r = await s.call('POST', '/api/setup/check', { region: 'com', envId: ENV_ID });
   assert.equal(r.status, 200);
   assert.equal(r.json.ok, true);
-  assert.equal(r.json.ok, true);
-  assert.match(r.json.callback, /api\/oauth\/callback/);
-  assert.match(r.json.callback, /^http:\/\/localhost:\d+\/api\/oauth\/callback$/);
+  assert.equal(r.json.redirectUri, PI_FLOW_REDIRECT_URI);
+  assert.equal(r.json.callback, undefined, 'no callback: the sign-in is a native flow');
 });
 
 test('check: a missing environment says so and leaks nothing', async () => {
@@ -70,7 +70,7 @@ test('apply: live refused; then with the stub the app is created, the secret is 
     assert.equal(r.json.created, true);
     assert.ok(!r.text.includes('sentinel-secret-abc'), 'the worker secret never comes back');
     assert.equal(r.json.connection.clientId, 'new-app-id');
-    assert.match(r.json.connection.redirectUri, /^http:\/\/localhost:\d+\/api\/oauth\/callback$/);
+    assert.equal(r.json.connection.redirectUri, PI_FLOW_REDIRECT_URI);
     // the stub saw a client_credentials mint with the worker pair:
     const mint = fetched.find((f) => f.url.endsWith('/as/token'));
     assert.ok(mint.body.includes('grant_type=client_credentials'));
@@ -113,7 +113,7 @@ test('worker.env missing: apply says where to put it, in one sentence, and echoe
   } finally { await t.close(); }
 });
 
-test('apply: created apps carry the code+PKCE grants, and PUT-backs never drop them', async () => {
+test('apply: created apps are PUBLIC native apps with the code+PKCE grants and the one placeholder redirect URI', async () => {
   fetched.length = 0;
   const t = await startApp({ env: {}, fetchImpl: stubFetch, dir: tmpDir() });
   try {
@@ -122,16 +122,27 @@ test('apply: created apps carry the code+PKCE grants, and PUT-backs never drop t
     const body = JSON.parse(post.body);
     assert.ok(body.grantTypes.includes('AUTHORIZATION_CODE') && body.grantTypes.includes('REFRESH_TOKEN'));
     assert.deepEqual(body.responseTypes, ['CODE']);
+    assert.equal(body.type, 'NATIVE_APP'); assert.equal(body.tokenEndpointAuthMethod, 'NONE'); assert.equal(body.pkceEnforcement, 'S256_REQUIRED');
+    assert.deepEqual(body.redirectUris, [PI_FLOW_REDIRECT_URI]);
+    assert.equal(body.name, 'MFA Admin MCP LAB sign-in');
+    // PingOne refused the first real create: a name allows only letters, numbers, spaces and / . ' _ -, and a description refuses $ + < = > ^ ` | ~
+    assert.match(body.name, /^[\p{L}\p{M}\p{N} \/.'_-]+$/u, 'the name PingOne will accept');
+    assert.doesNotMatch(body.description, /[$+<=>^`|~]/, 'the description PingOne will accept');
   } finally { await t.close(); }
 });
 
-test('apply: an existing app that lacks the callback gets it added by a full PUT', async () => {
+test('apply: an existing app of ours that lacks the redirect URI gets it added by a full PUT that keeps its grants', async () => {
   fetched.length = 0;
-  const t = await startApp({ env: {}, fetchImpl: stubFetch, dir: tmpDir() });
+  const existing = { id: 'existing-app', name: 'MFA Admin MCP LAB sign-in', type: 'NATIVE_APP', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], tokenEndpointAuthMethod: 'NONE', redirectUris: ['https://elsewhere.invalid/cb'] };
+  const t = await startApp({ env: {}, fetchImpl: async (url, init = {}) => ((init.method || 'GET') === 'GET' && String(url).includes('/applications') ? Response.json({ _embedded: { applications: [existing] } }) : stubFetch(url, init)), dir: tmpDir() });
   try {
-    // Point the stub's list at an app without the callback: the shared stub already returns one; force reuse by renaming
     const r = await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID, workerClientId: 'w', workerClientSecret: 's' });
-    assert.equal(r.status, 200);
+    assert.equal(r.status, 200, r.text); assert.equal(r.json.created, false);
+    const put = fetched.find((f) => f.method === 'PUT');
+    const body = JSON.parse(put.body);
+    assert.deepEqual(body.redirectUris, ['https://elsewhere.invalid/cb', PI_FLOW_REDIRECT_URI]);
+    assert.deepEqual(body.grantTypes, existing.grantTypes); assert.deepEqual(body.responseTypes, ['CODE']);
+    assert.equal(fetched.filter((f) => f.method === 'POST' && f.url.includes('/applications')).length, 0, 'no second app is created');
   } finally { await t.close(); }
 });
 
@@ -142,13 +153,13 @@ test('defaults: PINGONE_ENV_ID and PINGONE_REGION from worker.env, with no crede
   fs.writeFileSync(file, `# a comment\nPINGONE_ENV_ID=${ENV_ID}\nPINGONE_REGION=EU\nPINGONE_CLIENT_ID=worker-id-sentinel\nPINGONE_CLIENT_SECRET=worker-secret-sentinel\n`, { mode: 0o600 });
   const full = await get({ MFAADM_WORKER_ENV_FILE: file });
   assert.equal(full.status, 200);
-  assert.deepEqual(full.json, { envId: ENV_ID, region: 'eu' });
+  assert.deepEqual(full.json, { envId: ENV_ID, region: 'eu', piFlowRedirectUri: PI_FLOW_REDIRECT_URI });
   assert.equal(full.headers.get('cache-control'), 'no-store');
   assert.ok(!full.text.includes('sentinel'), 'neither the client id nor the secret is returned');
   fs.writeFileSync(file, `PINGONE_ENV_ID=${ENV_ID}\n`);
-  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: ENV_ID, region: null }, 'the environment shows even when the worker credentials are missing');
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: ENV_ID, region: null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'the environment shows even when the worker credentials are missing');
   fs.writeFileSync(file, 'PINGONE_ENV_ID=not-a-uuid\nPINGONE_REGION=com.evil\n');
-  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: null, region: null }, 'a malformed value never reaches a form');
-  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env') })).json, { envId: null, region: null });
-  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env'), PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'ca' })).json, { envId: ENV_ID, region: 'ca' }, 'the process env is the fallback, as for the preset');
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: null, region: null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'a malformed value never reaches a form');
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env') })).json, { envId: null, region: null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI });
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env'), PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'ca' })).json, { envId: ENV_ID, region: 'ca', piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'the process env is the fallback, as for the preset');
 });

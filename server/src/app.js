@@ -11,18 +11,17 @@ import { createAudit, decide, argsHash } from './gate.js';
 import { createFixtures } from './fixtures.js';
 import { createHealth } from './health.js';
 import { createMcpClient } from './mcpClient.js';
-import { createMock } from './mock.js';
+import { createMock, MOCK_LOGIN } from './mock.js';
 import { permit } from './netguard.js';
 import { setupRouter } from './setup.js';
 import { scrub, scrubJson } from './redact.js';
-import { browserOrigin, hostCheck, isLoopbackHost, labAllowedHosts, safeReturnTo, sameOriginWrites } from './security.js';
+import { hostCheck, isLoopbackHost, labAllowedHosts, sameOriginWrites } from './security.js';
 import { createStore } from './store.js';
 import { validateArgs } from './validate.js';
 import { liveHosts, mcpUrl } from './urls.js';
 import { shelfInfo } from './shelfLink.js';
 
 const RAW_FREE = new Set(['initialize', 'ping', 'tools/list', 'resources/list', 'resources/read', 'resources/templates/list', 'prompts/list', 'prompts/get']);
-const CALLBACK_PATHS = new Set(['/api/oauth/callback', '/callback']);
 const isMock = (c) => c.kind === 'pingone' && c.offline === true;
 const HINT_SHORT = 'A short list usually means missing admin roles, not a broken server (from the pingone-mcp skill; this tool has not verified it against a live tenant).';
 
@@ -82,7 +81,8 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     const secrets = conn ? secretsFor(conn) : auth.allSecrets();
     const message = scrub(err?.message || 'error', secrets).slice(0, 300);
     const code = err?.code || 'internal_error';
-    const status = code === 'login_required' ? 401 : code === 'mcp_timeout' ? 504 : /^(mcp_|token_|jwks_)/.test(code) ? 502 : code === 'bad_request' || code === 'pf_not_configured' ? 400 : 500;
+    const status = /^(login_required|invalid_credentials|invalid_otp)$/.test(code) ? 401 : code === 'login_expired' ? 410 : code === 'login_unsupported' ? 409 : code === 'mcp_timeout' ? 504
+      : /^(mcp_|token_|jwks_|pi_flow_|bad_id_token|iss_mismatch|aud_mismatch|nonce_mismatch)/.test(code) ? 502 : /^(bad_request|pf_not_configured|not_interactive)$/.test(code) ? 400 : 500;
     const body = { error: String(code), message: status === 500 && !err?.code ? 'internal error' : message };
     if (err?.httpStatus) body.upstreamStatus = err.httpStatus;
     return res.status(status).json(body);
@@ -312,39 +312,24 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     res.json({ result: scrubJson(result, secretsFor(conn)) });
   }));
 
-  // ---- interactive login
-  // The browser's own origin decides the redirect port: behind the shared lab-proxy the request's
-  // Host is the proxy's upstream name (:7815), but the browser — and so the redirect — is on the
-  // proxy's :8443. X-Forwarded-Host carries the browser's host when a proxy is in front.
-  const browserPort = (req) => String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',').pop().trim().split(':').pop();
+  // ---- interactive login: PingOne's native flow (response_mode=pi.flow), rule 16. No redirect and no callback: the page shows the
+  // form for each step, this server drives the flow at the authorization server and keeps the tokens. The password and the one-time
+  // code are passed on and never stored or logged; an error message that could carry one is scrubbed of it.
+  const STEP_ACTIONS = new Set(['password', 'otp', 'device']);
   app.post('/api/connections/:id/login/start', h(async (req, res, conn) => {
-    if (isMock(conn)) await ensureMock(); // the authorize URL points at the mock's own port; without this the first sign-in after a restart lands on a dead port
-    let u; try { u = new URL(conn.redirectUri); } catch { u = null; }
-    const hostPort = browserPort(req);
-    const schemeOk = u && ((u.protocol === 'http:' && isLoopbackHost(u.hostname)) || u.protocol === 'https:');
-    if (!u || !schemeOk || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
-      let want = `http://localhost:${hostPort}`; // behind the lab-proxy the callback is the proxy's https name, not localhost
-      try { const o = new URL(browserOrigin(req, lab)); if (!isLoopbackHost(o.hostname)) want = o.origin; } catch { /* keep the loopback form */ }
-      return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be ${want}/api/oauth/callback (or /callback), exactly as registered on your OAuth application. This connection has ${conn.redirectUri || 'none'}: delete it and add it again from this page.` });
-    }
-    const started = auth.startLogin(conn, { idp: req.body?.idp, returnTo: safeReturnTo(req.body?.returnTo) });
-    const mb = browserMockBase(conn);
-    if (mb) started.authorizeUrl = started.authorizeUrl.replace(`${offlineBase(conn)}/${conn.envId}/as`, mb);
-    res.json({ authorizeUrl: started.authorizeUrl });
+    const r = await auth.startLogin(conn, { idp: req.body?.idp });
+    res.json({ ok: true, ...r, ...(isMock(conn) ? { mockLogin: MOCK_LOGIN } : {}) });
   }));
-  const callback = async (req, res) => {
-    const at = `${browserOrigin(req, lab)}${req.path}`; // the URL the browser used, which behind the lab-proxy is not Host
-    const back = auth.pendingReturnTo(String(req.query.state ?? '')); // read before completeLogin consumes the state
-    let location;
-    try {
-      const pendingConn = store.get(auth.pendingConnId(String(req.query.state ?? '')));
-      if (pendingConn && !isMock(pendingConn) && liveGate) throw Object.assign(new Error('live is refused'), { code: 'live_refused' });
-      if (pendingConn && isMock(pendingConn)) await ensureMock();
-      const r = await withPermits(pendingConn, () => auth.completeLogin({ q: req.query, at, getConn: (id) => store.get(id) })); location = `${back}?login=ok&connection=${encodeURIComponent(r.connId)}`; }
-    catch (err) { location = `${back}?login=error&reason=${encodeURIComponent(String(err.code || 'error'))}`; }
-    res.redirect(302, location);
-  };
-  for (const p of CALLBACK_PATHS) app.get(p, callback);
+  app.post('/api/connections/:id/login/step', h(async (req, res, conn) => {
+    const b = req.body || {};
+    const str = (v, max) => (typeof v === 'string' && v.length > 0 && v.length <= max ? v : null);
+    const ok = STEP_ACTIONS.has(b.action) && str(b.loginId, 64)
+      && (b.action !== 'password' || (str(b.username, 256) && str(b.password, 1024)))
+      && (b.action !== 'otp' || /^[0-9A-Za-z]{4,12}$/.test(String(b.otp ?? '')))
+      && (b.action !== 'device' || /^[A-Za-z0-9-]{6,64}$/.test(String(b.deviceId ?? '')));
+    if (!ok) return res.status(400).json({ error: 'bad_request', message: 'The sign-in step is incomplete or malformed.' });
+    res.json({ ok: true, ...(await auth.loginStep(conn, { loginId: b.loginId, action: b.action, username: b.username, password: b.password, otp: b.otp, deviceId: b.deviceId })) });
+  }));
   app.post('/api/connections/:id/logout', h((_req, res, conn) => { auth.logout(conn); res.json({ ok: true }); }, { noNetwork: true }));
 
   app.get('/api/audit', (_req, res) => res.json({ entries: audit.recent() }));
@@ -374,18 +359,6 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   }));
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
 
-  // The mock's own port lives inside the container, so a browser cannot reach the authorize URL directly.
-  // Same-origin pass-through: everything under /__mock/ is served by the in-process mock, and offline
-  // connections get their authorize URL rewritten to this path (browserMockBase below). GET only, and
-  // only the mock's AS endpoints (authorize, jwks) ever need it — the token redemption stays server-side.
-  const BROWSER_MOCK_PREFIX = '/__mock';
-  app.get(`${BROWSER_MOCK_PREFIX}/*`, h(async (req, res) => {
-    await ensureMock();
-    // handler wants (req, res) with the real URL; the express path is /__mock/<env>/as/authorize...
-    req.url = req.originalUrl.slice(BROWSER_MOCK_PREFIX.length);
-    await theMock.handle(req, res);
-  }, { noNetwork: true }));
-  const browserMockBase = (conn) => (process.env.MFAADM_CONTAINER === '1' ? `${BROWSER_MOCK_PREFIX}/${conn.envId}/as` : null);
 
   if (fs.existsSync(webDist)) { app.use(express.static(webDist)); app.get('*', (req, res, next) => (req.path.startsWith('/api/') ? next() : res.sendFile('index.html', { root: webDist }))); }
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));

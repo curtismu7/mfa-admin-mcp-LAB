@@ -36,7 +36,7 @@ test('with Live refused by the bind: a saved Live connection cannot be created, 
 
 test('with Live refused: a Live connection already in the file is refused on every route before any request is made', async () => {
   const c = s.app.locals.store.create({ kind: 'custom', url: `${s.mock.base}/mcp/${ENV_ID}`, label: 'saved earlier' });
-  const calls = [['GET', 'tools'], ['POST', 'test'], ['POST', 'scan'], ['POST', 'call', { tool: 'listUsers' }], ['POST', 'rpc', { method: 'tools/list' }], ['POST', 'login/start']];
+  const calls = [['GET', 'tools'], ['POST', 'test'], ['POST', 'scan'], ['POST', 'call', { tool: 'listUsers' }], ['POST', 'rpc', { method: 'tools/list' }], ['POST', 'login/start'], ['POST', 'login/step', { loginId: 'x', action: 'otp', otp: '123456' }]];
   for (const [m, p, b] of calls) {
     const r = await s.call(m, `/api/connections/${c.id}/${p}`, m === 'GET' ? undefined : (b ?? {}));
     assert.equal(r.status, 403, `${p}: ${r.text}`); assert.equal(r.json.error, 'live_refused', p);
@@ -70,18 +70,6 @@ test('the guards: Live needs a loopback bind (or the container opt-in); no env o
   for (const bind of ['0.0.0.0', '::', '192.0.2.1']) assert.deepEqual(liveRefusal({ MFAADM_BIND: bind })?.failed, ['loopback-bind'], `a host run bound to ${bind} is refused for Live`);
   assert.deepEqual(liveRefusal({ MFAADM_BIND: '0.0.0.0', MFAADM_CONTAINER: '0' })?.failed, ['loopback-bind'], 'only the exact marker 1 counts');
   assert.deepEqual(liveRefusal({ MFAADM_CONTAINER: '1' }), null, 'the marker without a wide bind changes nothing');
-});
-
-test('with Live refused: the OAuth callback of a saved Live connection is refused before any token request, and sends nothing', async () => {
-  const port = new URL(s.origin).port;
-  const redirectUri = `http://localhost:${port}/api/oauth/callback`;
-  const c = s.app.locals.store.create({ kind: 'pingone', region: 'com', envId: ENV_ID, auth: 'interactive', clientId: 'live-app', redirectUri });
-  const { state } = s.app.locals.auth.startLogin(c);
-  const before = guard.attempts.length;
-  const cb = await fetch(`${redirectUri}?state=${encodeURIComponent(state)}&code=abc`, { redirect: 'manual' });
-  assert.equal(cb.status, 302); assert.match(cb.headers.get('location'), /login=error&reason=live_refused/);
-  assert.equal(guard.attempts.length, before, 'no request to the authorization server was attempted');
-  s.app.locals.store.remove(c.id);
 });
 
 test('modeFrom: mock by default, live only when asked, anything else is an error, a bare MODE is ignored', () => {

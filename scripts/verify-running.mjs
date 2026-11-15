@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 // Verifies a RUNNING instance (host-run or container) by content, mock demo only: health contract, the page, the offline
-// demo flow through the API, the write gate, the scan, and the interactive redirect base. Contacts only the base URL you give
-// (must be loopback) and, with --container, `docker exec`s into that container to fetch the stub authorization endpoint,
-// which listens on the container's own loopback and is not reachable from the host.
-//   node scripts/verify-running.mjs http://localhost:5241 [--container <name>]
-import { execFileSync } from 'node:child_process';
+// demo flow through the API, the write gate, the scan, and the interactive native-flow sign-in. Contacts only the base URL you give
+// (must be loopback).
+//   node scripts/verify-running.mjs http://localhost:5241
 import http from 'node:http';
 
 const base = process.argv[2];
-const container = process.argv.includes('--container') ? process.argv[process.argv.indexOf('--container') + 1] : null;
-if (!base || !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(base)) { console.error('usage: verify-running.mjs http://localhost:<port> [--container name]'); process.exit(2); }
+if (!base || !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(base)) { console.error('usage: verify-running.mjs http://localhost:<port>'); process.exit(2); }
 const hostPort = new URL(base).port;
 let failures = 0;
 const check = (ok, what) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}`); if (!ok) failures++; };
@@ -53,24 +50,23 @@ check(del.status === 409 && del.json.error === 'typed_name_required', 'a destruc
 const audit = (await call('GET', '/api/audit')).json.entries.map((e) => e.outcome);
 check(['blocked:writes_disabled', 'blocked:confirm_required', 'blocked:args_hash_mismatch', 'ok', 'blocked:typed_name_required'].every((o) => audit.includes(o)), 'the audit log recorded the blocked and the allowed calls');
 
-// Interactive: the redirect URI must be http://localhost:<published port>/api/oauth/callback.
-const redirectUri = `http://localhost:${hostPort}/api/oauth/callback`;
-const i = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify interactive', region: 'com', envId: ENV, endpointStyle: 'api', auth: 'interactive', clientId: 'admin-demo', redirectUri })).json;
-const wrongPort = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'wrong port', region: 'com', envId: ENV, endpointStyle: 'api', auth: 'interactive', clientId: 'admin-demo', redirectUri: `http://localhost:${Number(hostPort) + 1}/api/oauth/callback` })).json;
-const refused = await call('POST', `/api/connections/${wrongPort.id}/login/start`, {});
-check(refused.status === 400 && refused.json.error === 'redirect_uri_invalid', `a redirect URI on another port than the published one (${Number(hostPort) + 1}) is refused`);
+// Interactive: the sign-in is a native flow (pi.flow). The page shows the form and this server drives the steps at the (mock) authorization
+// server, so there is no callback, no redirect URI and nothing to register: the run works the same on any published port.
+const i = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify interactive', region: 'com', envId: ENV, endpointStyle: 'api', auth: 'interactive', clientId: 'admin-demo' })).json;
 const start = await call('POST', `/api/connections/${i.id}/login/start`, {});
-check(start.status === 200 && /code_challenge_method=S256/.test(start.json.authorizeUrl) && /state=/.test(start.json.authorizeUrl) && /nonce=/.test(start.json.authorizeUrl), `login/start accepts ${redirectUri} and builds an S256 + state + nonce authorize URL`);
-if (container) {
-  const loc = execFileSync('docker', ['exec', container, 'node', '-e', 'fetch(process.argv[1],{redirect:"manual"}).then(r=>console.log(r.headers.get("location")))', start.json.authorizeUrl]).toString().trim();
-  check(loc.startsWith(redirectUri), 'the stub authorization server redirects back to the published-port redirect URI');
-  const cb = await fetch(loc, { redirect: 'manual' });
-  check(cb.status === 302 && /login=ok/.test(cb.headers.get('location') || ''), 'the callback on the published port completes the sign-in');
-  const view = (await call('GET', '/api/connections')).json.connections.find((c) => c.id === i.id);
-  check(view.auth_status?.signedIn === true && JSON.stringify(view).includes('mock-admin-user') && !/mock-at-|mock-rt-/.test(JSON.stringify(view)), 'signed in as <sub>, no token value in the view');
-  const replay = await fetch(loc, { redirect: 'manual' });
-  check(replay.status === 302 && /login=error/.test(replay.headers.get('location') || ''), 'replaying the callback (single-use state) fails');
-} else console.log('SKIP  callback leg (needs --container: the stub authorization server is inside the container)');
-for (const id of [w.id, i.id, wrongPort.id]) await call('DELETE', `/api/connections/${id}`);
+check(start.status === 200 && start.json.step === 'password' && start.json.loginId && start.json.authorizeUrl === undefined, 'login/start opens a native flow and asks for the password (no redirect URL is handed out)');
+const m = start.json.mockLogin ?? {};
+const step = (b) => call('POST', `/api/connections/${i.id}/login/step`, { loginId: start.json.loginId, ...b });
+const badPw = await step({ action: 'password', username: m.username, password: 'not-the-password' });
+check(badPw.status === 401 && badPw.json.error === 'invalid_credentials', 'a wrong password is refused and can be retried');
+const second = await step({ action: 'password', username: m.username, password: m.password });
+check(second.status === 200 && second.json.step === 'otp', 'the right password moves the flow on to the one-time code');
+const done = await step({ action: 'otp', otp: m.otp });
+check(done.status === 200 && done.json.step === 'done', 'the code completes the sign-in');
+const view = (await call('GET', '/api/connections')).json.connections.find((c) => c.id === i.id);
+check(view.auth_status?.signedIn === true && JSON.stringify(view).includes('mock-admin-user') && !/mock-at-|mock-rt-/.test(JSON.stringify(view)), 'signed in as <sub>, no token value in the view');
+const replay = await step({ action: 'otp', otp: m.otp });
+check(replay.status === 410 && replay.json.error === 'login_expired', 'replaying a finished sign-in fails');
+for (const id of [w.id, i.id]) await call('DELETE', `/api/connections/${id}`);
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);
