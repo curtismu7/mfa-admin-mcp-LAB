@@ -165,3 +165,44 @@ test('defaults: PINGONE_ENV_ID and PINGONE_REGION from worker.env, with no crede
   assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env') })).json, { envId: null, region: null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI });
   assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env'), PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'ca' })).json, { envId: ENV_ID, region: 'ca', piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'the process env is the fallback');
 });
+
+// The environment's own "PingOne MCP Server" app (the one the owner's live sign-in proved, 2026-11-15) is used as it is.
+const MCP_APP = { id: 'mcp-server-app-id', name: 'PingOne MCP Server', enabled: true, type: 'NATIVE_APP', protocol: 'OPENID_CONNECT', tokenEndpointAuthMethod: 'NONE', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], pkceEnforcement: 'S256_REQUIRED', redirectUris: ['cursor://example.invalid/callback', 'http://localhost:7464/callback', 'https://app.example/callback', 'http://127.0.0.1:7474/callback'] };
+const withApps = (apps) => async (url, init = {}) => ((init.method || 'GET') === 'GET' && String(url).includes('/applications') ? Response.json({ _embedded: { applications: apps } }) : stubFetch(url, init));
+
+test('apply: the environment\'s "PingOne MCP Server" app is used as it is: its client id, a loopback redirect URI it registers (127.0.0.1 first), no create, no edit', async () => {
+  fetched.length = 0;
+  const t = await startApp({ env: {}, fetchImpl: withApps([{ id: 'other', name: 'Existing sign-in app' }, MCP_APP]), dir: tmpDir() });
+  try {
+    const r = await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID, workerClientId: 'w', workerClientSecret: 'sentinel-secret-abc' });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.source, 'mcp-server-app'); assert.equal(r.json.created, false); assert.equal(r.json.appName, 'PingOne MCP Server');
+    assert.equal(r.json.connection.clientId, 'mcp-server-app-id');
+    assert.equal(r.json.connection.redirectUri, 'http://127.0.0.1:7474/callback', 'a redirect URI the app registers, 127.0.0.1 before localhost');
+    assert.equal(r.json.connection.auth, 'interactive'); assert.equal(r.json.connection.endpointStyle, 'mcp-host');
+    assert.equal(fetched.filter((f) => f.url.includes('/applications') && f.method !== 'GET').length, 0, 'the app is neither created nor edited');
+    assert.ok(!r.text.includes('sentinel-secret-abc'));
+    const saved = await t.call('POST', '/api/connections', r.json.connection);
+    assert.equal(saved.status, 201, `the connection Setup hands back is accepted as it is: ${saved.text}`);
+  } finally { await t.close(); }
+  const one = await startApp({ env: {}, fetchImpl: withApps([{ ...MCP_APP, redirectUris: ['https://app.example/callback', 'http://localhost:7464/callback'] }]), dir: tmpDir() });
+  try { assert.equal((await one.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID, workerClientId: 'w', workerClientSecret: 's' })).json.redirectUri, 'http://localhost:7464/callback', 'localhost when it has no 127.0.0.1 one'); } finally { await one.close(); }
+});
+
+test('apply: an unusable "PingOne MCP Server" app (confidential, disabled, no code flow, no loopback redirect) falls back to the lab\'s own app and says why', async () => {
+  const cases = [
+    [{ tokenEndpointAuthMethod: 'CLIENT_SECRET_BASIC' }, /not a public client/],
+    [{ enabled: false }, /disabled/],
+    [{ grantTypes: ['CLIENT_CREDENTIALS'], responseTypes: [] }, /authorization code/],
+    [{ redirectUris: ['https://app.example/callback', 'cursor://example.invalid/callback'] }, /loopback/],
+  ];
+  for (const [patch, why] of cases) {
+    const t = await startApp({ env: {}, fetchImpl: withApps([{ ...MCP_APP, ...patch }]), dir: tmpDir() });
+    try {
+      const r = await t.call('POST', '/api/setup/apply', { region: 'com', envId: ENV_ID, workerClientId: 'w', workerClientSecret: 's' });
+      assert.equal(r.status, 200, r.text);
+      assert.equal(r.json.source, 'lab-app', JSON.stringify(patch)); assert.match(r.json.why, why);
+      assert.equal(r.json.connection.clientId, 'new-app-id'); assert.equal(r.json.connection.redirectUri, PI_FLOW_REDIRECT_URI);
+    } finally { await t.close(); }
+  }
+});

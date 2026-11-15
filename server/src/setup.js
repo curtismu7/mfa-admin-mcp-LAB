@@ -7,11 +7,16 @@
 // demo_api_server/services/mcpPingOneHttpAdapter.js): an authorization-code +
 // PKCE token minted in the SAME environment the endpoint serves; roles ride on
 // the signed-in user, not the app. The sign-in is a native flow (pi.flow, rule 16),
-// so the app is a PUBLIC native application of its own, not the family's admin app
-// (a confidential client, which needs a secret this lab never holds): NATIVE_APP,
-// AUTHORIZATION_CODE + REFRESH_TOKEN, tokenEndpointAuthMethod NONE, PKCE S256_REQUIRED,
-// response type CODE. No roles on the app, no secret. It names one redirect URI
-// (PI_FLOW_REDIRECT_URI) that PingOne requires but nothing serves.
+// so the app must be PUBLIC (no secret; the family's confidential admin app cannot work).
+// First choice: the environment's own "PingOne MCP Server" application, used as it is
+// (measured live 2026-11-15: a public OIDC app, code + PKCE + refresh; signing in with it
+// through pi.flow got the hosted MCP's full tool list, the lab's own app got only two).
+// Setup never edits that app; it picks one of its registered loopback redirect URIs,
+// because pi.flow still names a redirect URI that the app must register (nothing is
+// served there). Fallback, when that app is missing or unusable: the lab's own app,
+// NATIVE_APP, AUTHORIZATION_CODE + REFRESH_TOKEN, tokenEndpointAuthMethod NONE, PKCE
+// S256_REQUIRED, response type CODE, no roles, no secret, with the placeholder
+// redirect URI (PI_FLOW_REDIRECT_URI).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -60,6 +65,7 @@ export function readWorkerEnv(env = process.env) {
 // PingOne's rules for these two fields (measured 2026-11-15 on a real create): a name allows only letters, numbers, spaces, / . ' _ - (so no
 // parentheses); a description refuses $ + < = > ^ ` | ~.
 const APP_NAME = 'MFA Admin MCP LAB sign-in';
+export const MCP_SERVER_APP = 'PingOne MCP Server';
 
 const j = (r) => r.json().then((b) => ({ status: r.status, b }), () => ({ status: r.status, b: null }));
 
@@ -77,6 +83,22 @@ const writable = (app) => {
 };
 
 const bare = (u) => (typeof u === 'string' ? u : u?.url);
+const upper = (xs) => (Array.isArray(xs) ? xs : []).map((x) => String(x).toUpperCase());
+const loopback = (u) => { try { const x = new URL(u); return x.protocol === 'http:' && (x.hostname === '127.0.0.1' || x.hostname === 'localhost'); } catch { return false; } };
+
+// The environment's "PingOne MCP Server" app, if it can carry this lab's sign-in as it is: enabled, public (token auth NONE),
+// authorization code with response type CODE, and at least one http loopback redirect URI (127.0.0.1 preferred). Otherwise a reason.
+export function pickMcpServerApp(apps) {
+  const a = (apps || []).find((x) => x?.name === MCP_SERVER_APP);
+  if (!a) return { why: `no application named "${MCP_SERVER_APP}"` };
+  if (a.enabled === false) return { why: `"${MCP_SERVER_APP}" is disabled` };
+  if (String(a.tokenEndpointAuthMethod || '').toUpperCase() !== 'NONE') return { why: `"${MCP_SERVER_APP}" is not a public client (token endpoint authentication is not None)` };
+  if (!upper(a.grantTypes).includes('AUTHORIZATION_CODE') || !upper(a.responseTypes).includes('CODE')) return { why: `"${MCP_SERVER_APP}" does not allow the authorization code flow` };
+  const uris = (a.redirectUris || []).map(bare).filter(loopback);
+  const redirectUri = uris.find((u) => new URL(u).hostname === '127.0.0.1') || uris[0];
+  if (!redirectUri) return { why: `"${MCP_SERVER_APP}" registers no http loopback redirect URI` };
+  return { app: a, redirectUri };
+}
 
 const withPermit = async (host, fn) => { const r = permit(host); try { return await fn(); } finally { r(); } };
 
@@ -120,7 +142,15 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
     let apps;
     try { apps = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications?limit=100`, { headers: H, signal: AbortSignal.timeout(10_000) }))); } catch { apps = { status: 0, b: null }; }
     if (apps.status !== 200) return res.status(424).json({ error: 'api_error', message: `Listing applications failed (${apps.status}). The worker may lack a role that can read applications.` });
-    let app = (apps.b?._embedded?.applications || []).find((a) => a.name === APP_NAME);
+    const list = apps.b?._embedded?.applications || [];
+    const mcp = pickMcpServerApp(list);
+    if (mcp.app) {
+      return res.json({
+        ok: true, created: false, source: 'mcp-server-app', appName: mcp.app.name, clientId: mcp.app.id, redirectUri: mcp.redirectUri,
+        connection: { kind: 'pingone', region, envId, auth: 'interactive', endpointStyle: 'mcp-host', clientId: mcp.app.id, redirectUri: mcp.redirectUri, label: 'PingOne hosted MCP (set up)' },
+      });
+    }
+    let app = list.find((a) => a.name === APP_NAME);
     let created = false;
     if (!app) {
       const body = { name: APP_NAME, description: 'Interactive sign-in for the MFA Admin MCP LAB (PingOne native flow, pi.flow, authorization code with PKCE; roles ride on the signed-in user).', enabled: true, type: 'NATIVE_APP', protocol: 'OPENID_CONNECT', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], tokenEndpointAuthMethod: 'NONE', pkceEnforcement: 'S256_REQUIRED', redirectUris: [PI_FLOW_REDIRECT_URI] };
@@ -135,7 +165,7 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
       app = r.b;
     }
     return res.json({
-      ok: true, created, appName: app.name, clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI,
+      ok: true, created, source: 'lab-app', why: mcp.why, appName: app.name, clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI,
       connection: { kind: 'pingone', region, envId, auth: 'interactive', endpointStyle: 'mcp-host', clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI, label: 'PingOne hosted MCP (set up)' },
     });
   });
