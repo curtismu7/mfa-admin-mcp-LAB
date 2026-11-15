@@ -36,7 +36,7 @@ Merged on `main` (lab PR numbers), all in the running container and pinned in `A
 - **#35** Optional **login hint** per connection: set on the Add connection form or on the connection card (**Save hint**; an empty value clears it). It is sent as `login_hint` on the authorize request and pre-fills the dialog's username. PingOne treats it as advisory (measured: 200, normal password step); PingFederate binds the sign-in to it.
 - **#37** A finished sign-in makes that connection the one in use, and Tools names the connection in use.
 
-Running container image `…:latest` = `…:preset-status`, built from `main` `bcb3da5` (includes #38, #40 and #41; its `server/src` matches `main` byte for byte). Rollback tags: `:pre-preset-status`, `:pre-424`, `:pre-login-hint`, `:user-login`, `:pi-flow`.
+Running container image `…:latest` = `…:setup-app`, built from `main` `078f558` (includes #38 and #40 to #44; its `server/src` matches `main` byte for byte). Rollback tags: `:pre-setup-app`, `:probe-permit`, `:pre-424`, `:pre-login-hint`, `:user-login`, `:pi-flow`. Since #44, Setup uses the environment's public "PingOne MCP Server" app as it is (not yet run against the real tenant).
 
 **Proven 2026-11-15 (owner):** the hosted MCP accepts the lab's pi.flow token. The connection **PingOne hosted MCP (pi.flow)** uses the environment's existing public app "PingOne MCP Server", a redirect URI that app registers, and `resource=<MCP URL>`; Test connection listed 86 tools. **Still open (owner-run):** a real `getMfaSettings` call, and the PingFederate native flow against a real PF. Details: `docs/HANDOFF-2026-11-15.md` §0.
 
