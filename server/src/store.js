@@ -11,6 +11,13 @@ import { isPrivateLiteral, validEnvId, validRegion } from './urls.js';
 const KINDS = new Set(['pingone', 'custom', 'raw']);
 export const WORKER_REFUSED = 'The hosted PingOne MCP server takes a user sign-in (pi.flow), not a worker (client_credentials) token: save the connection without auth "worker" and without a client secret, then sign in. (Setup\'s Management worker only creates the sign-in application; it never calls the MCP server.)';
 
+// login_hint: the username to offer in the sign-in dialog (and send to the authorization server). Plain text, no control characters.
+export function cleanLoginHint(v) {
+  const s = String(v ?? '').trim();
+  if (s.length > 256 || /[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error('loginHint must be a short plain-text username (at most 256 characters, no control characters)'), { code: 'bad_request' });
+  return s;
+}
+
 function cleanUrl(raw) {
   let u;
   try { u = new URL(String(raw).trim()); } catch { throw new Error('url is not a valid URL'); }
@@ -64,6 +71,7 @@ export function createStore({ dir }) {
         }
       }
       rec.clientId = str(b.clientId, 120);
+      if (b.loginHint) rec.loginHint = cleanLoginHint(b.loginHint);
       if (!rec.clientId) throw new Error('clientId is required');
       // pi.flow serves no callback, so a redirect URI is optional (the lab sends its own placeholder). A value kept from before pi.flow,
       // or one a custom application insists on, must still be a URL: http loopback, or https.
@@ -87,6 +95,7 @@ export function createStore({ dir }) {
     const all = load(); const rec = Object.hasOwn(all, id) ? all[id] : null;
     if (!rec) return null;
     if (typeof patch.allowWrites === 'boolean') rec.allowWrites = patch.allowWrites;
+    if (rec.kind === 'pingone' && rec.auth === 'interactive' && typeof patch.loginHint === 'string') { const h = cleanLoginHint(patch.loginHint); if (h) rec.loginHint = h; else delete rec.loginHint; }
     save(all); return rec;
   }
   // Reset: every connection goes back to writes off (the safe state). Saved connections and their secrets are kept.

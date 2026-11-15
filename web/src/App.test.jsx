@@ -465,6 +465,40 @@ test("tool page: the environment argument is always filled, from the connection 
   expect(await screen.findByLabelText(/environment_id/)).toHaveValue(ENV);
 });
 
+test("a connection's login hint pre-fills the sign-in dialog's username and can be saved from the card", async () => {
+  const api = fakeApi({ conns: [conn({ id: "c1", label: "Hinted", auth: "interactive", clientSecret: undefined, loginHint: "admin.user", auth_status: { signedIn: false } })], handlers: {
+    "POST /api/connections/:id/login/start": (_b, _s, json) => json(200, { ok: true, loginId: "login-1", step: "password", usernameHint: "admin.user" }),
+    "POST /api/connections/:id/settings": (b, st, json) => { st.conns[0].loginHint = b.loginHint || undefined; return json(200, st.conns[0]); },
+  } });
+  const user = userEvent.setup();
+  render(<App />);
+  const card = await screen.findByTestId("conn-card");
+  expect(within(card).getByTestId("card-login-hint")).toHaveValue("admin.user");
+  expect(within(card).getByTestId("card-login-hint-save")).toBeDisabled(); // nothing changed
+  await user.click(within(card).getByRole("button", { name: "P1 login" }));
+  const dlg = await screen.findByTestId("login-dialog");
+  expect(within(dlg).getByTestId("login-username")).toHaveValue("admin.user");
+  expect(within(dlg).queryByTestId("login-mock")).toBeNull();
+  await user.click(within(dlg).getByTestId("login-cancel"));
+  const input = within(screen.getByTestId("conn-card")).getByTestId("card-login-hint");
+  await user.clear(input); await user.type(input, "someone.else");
+  await user.click(within(screen.getByTestId("conn-card")).getByTestId("card-login-hint-save"));
+  await waitFor(() => expect(api.calls.some((c) => c.url === "/api/connections/c1/settings" && c.body.loginHint === "someone.else")).toBe(true));
+});
+
+test("the Add connection form offers the optional login hint and sends it", async () => {
+  const api = fakeApi({ conns: [] });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  await user.type(await screen.findByTestId("wiz-login-hint"), "admin.user");
+  const wiz = screen.getByRole("form", { name: "Add a connection" });
+  await user.type(within(wiz).getByLabelText(/^Client id/), "app-1");
+  await user.type(within(wiz).getByLabelText(/Environment id/), "11111111-2222-4333-8444-555555555555");
+  await user.click(within(wiz).getByRole("button", { name: "Save connection" }));
+  await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.loginHint === "admin.user")).toBe(true));
+});
+
 test("PF login is only offered where a PingFederate exists: the mock simulates one, a live connection needs its own base URL", async () => {
   const inter = { auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } };
   fakeApi({ conns: [
