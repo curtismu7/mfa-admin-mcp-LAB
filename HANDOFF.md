@@ -1,6 +1,6 @@
 # MFA Admin MCP LAB — Handoff
 
-**Date:** 2026-11-15 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the real password + SMS sign-in and the getMfaSettings call are owner-run and not yet done.**
+**Date:** 2026-11-15 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the live pi.flow sign-in is proven (86 tools); a real getMfaSettings call is owner-run and not yet done.**
 
 ---
 
@@ -36,9 +36,9 @@ Merged on `main` (lab PR numbers), all in the running container and pinned in `A
 - **#35** Optional **login hint** per connection: set on the Add connection form or on the connection card (**Save hint**; an empty value clears it). It is sent as `login_hint` on the authorize request and pre-fills the dialog's username. PingOne treats it as advisory (measured: 200, normal password step); PingFederate binds the sign-in to it.
 - **#37** A finished sign-in makes that connection the one in use, and Tools names the connection in use.
 
-Running container image `…:latest` = `…:login-hint` (built from `main`; its `server/src` matches `main` byte for byte). Rollback tags: `:pre-login-hint`, `:user-login`, `:pi-flow`.
+Running container image `…:latest` = `…:preset-status`, built from `main` `bcb3da5` (includes #38, #40 and #41; its `server/src` matches `main` byte for byte). Rollback tags: `:pre-preset-status`, `:pre-424`, `:pre-login-hint`, `:user-login`, `:pi-flow`.
 
-**Still open (owner-run, nobody else can do it):** sign in on **PingOne hosted MCP (pi.flow)** (Mock → Real → **P1 login** → username, password, SMS code → **Test connection** → Tools → getMfaSettings). Unproven until then: the real password and SMS steps, the code redemption, whether the hosted MCP accepts a token from this lab's own native app, and the PingFederate native flow against a real PF. Save your username as the hint on the card first if you want it pre-filled.
+**Proven 2026-11-15 (owner):** the hosted MCP accepts the lab's pi.flow token. The connection **PingOne hosted MCP (pi.flow)** uses the environment's existing public app "PingOne MCP Server", a redirect URI that app registers, and `resource=<MCP URL>`; Test connection listed 86 tools. **Still open (owner-run):** a real `getMfaSettings` call, and the PingFederate native flow against a real PF. Details: `docs/HANDOFF-2026-11-15.md` §0.
 
 ## Recent work (2026-11-13→14, 17 PRs, all CI green)
 
