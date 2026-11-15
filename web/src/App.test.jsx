@@ -562,6 +562,28 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
   expect(within(pf).queryByTestId("pf-hint")).toBeNull();
 });
 
+test("a saved live PingOne connection gets a PingFederate base URL on its card, and then PF login is offered", async () => {
+  const inter = { auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } };
+  const api = fakeApi({ conns: [conn({ id: "c2", label: "Live PingOne", offline: false, clientId: "p1-client", ...inter })], handlers: {
+    "POST /api/connections/:id/settings": (b, st, json) => { Object.assign(st.conns[0], b.idpBaseUrl ? { idpBaseUrl: b.idpBaseUrl } : {}, b.pfClientId ? { pfClientId: b.pfClientId } : {}); return json(200, st.conns[0]); },
+  } });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  const card = await screen.findByTestId("conn-card");
+  expect(within(card).getByTestId("pf-login")).toBeDisabled();
+  expect(within(card).getByTestId("pf-hint")).toHaveTextContent(/add it under PingFederate on this card/);
+  expect(within(card).getByTestId("card-pf-save")).toBeDisabled(); // nothing changed yet
+  expect(within(card).getByTestId("card-pf-client")).toHaveAttribute("placeholder", "p1-client"); // empty: the connection's client id is used
+  await user.type(within(card).getByTestId("card-pf-base"), "https://pingfederate.example.com");
+  await user.type(within(card).getByTestId("card-pf-client"), "pf-client");
+  await user.click(within(card).getByTestId("card-pf-save"));
+  await waitFor(() => expect(api.calls.find((c) => c.url.endsWith("/settings"))?.body).toEqual({ idpBaseUrl: "https://pingfederate.example.com", pfClientId: "pf-client" }));
+  await waitFor(() => expect(within(screen.getByTestId("conn-card")).getByTestId("pf-login")).toBeEnabled());
+  expect(screen.getByTestId("conn-card")).toHaveTextContent(/PingFederate https:\/\/pingfederate\.example\.com, PF client pf-client/);
+  expect(screen.queryByTestId("pf-hint")).toBeNull();
+});
+
 test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
   const message = "the authorization server did not open a sign-in flow (HTTP 400: invalid_request: redirect_uri mismatch).";
   fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })],

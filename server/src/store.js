@@ -9,6 +9,21 @@ import { isLoopbackHost } from './security.js';
 import { isPrivateLiteral, validEnvId, validRegion } from './urls.js';
 
 const KINDS = new Set(['pingone', 'custom', 'raw']);
+
+// A PingFederate base URL: https (http only on loopback), no credentials. Empty means none.
+function cleanIdpBase(v) {
+  const u = String(v ?? '').trim().slice(0, 300);
+  if (!u) return '';
+  let bUrl; try { bUrl = new URL(u); } catch { bUrl = null; }
+  const ok = bUrl && ((bUrl.protocol === 'https:') || (bUrl.protocol === 'http:' && isLoopbackHost(bUrl.hostname)));
+  if (!ok || bUrl.username || bUrl.password) throw Object.assign(new Error('idpBaseUrl must be an https URL (http only for a loopback address), without credentials'), { code: 'bad_request' });
+  return u;
+}
+function cleanPfClientId(v) {
+  const s = String(v ?? '').trim();
+  if (s.length > 120 || /[\s\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error('pfClientId must be a client id without spaces (at most 120 characters)'), { code: 'bad_request' });
+  return s;
+}
 export const WORKER_REFUSED = 'The hosted PingOne MCP server takes a user sign-in (pi.flow), not a worker (client_credentials) token: save the connection without auth "worker" and without a client secret, then sign in. (Setup\'s Management worker only creates the sign-in application; it never calls the MCP server.)';
 
 // login_hint: the username to offer in the sign-in dialog (and send to the authorization server). Plain text, no control characters.
@@ -61,14 +76,9 @@ export function createStore({ dir }) {
       // PF is only meaningful for interactive sign-in (it must run an OAuth app for this tool's PKCE flow).
       rec.idp = b.idp === 'pf' ? 'pf' : 'pingone';
       if (rec.idp === 'pf') {
-        rec.idpBaseUrl = str(b.idpBaseUrl, 300);
+        rec.idpBaseUrl = cleanIdpBase(b.idpBaseUrl);
         // required unless the connection is the offline mock: a clean https (or loopback http) base; the /as suffix is appended by urls.asBase
         if (!rec.idpBaseUrl && !rec.offline) throw new Error('PingFederate needs its base URL (idpBaseUrl), for example https://pingfederate.example.com');
-        if (rec.idpBaseUrl) {
-          let bUrl; try { bUrl = new URL(rec.idpBaseUrl); } catch { bUrl = null; }
-          const ok = bUrl && ((bUrl.protocol === 'https:') || (bUrl.protocol === 'http:' && isLoopbackHost(bUrl.hostname)));
-          if (!ok || bUrl.username || bUrl.password) throw new Error('idpBaseUrl must be an https URL (http only for a loopback address), without credentials');
-        }
       }
       rec.clientId = str(b.clientId, 120);
       if (b.loginHint) rec.loginHint = cleanLoginHint(b.loginHint);
@@ -96,6 +106,16 @@ export function createStore({ dir }) {
     if (!rec) return null;
     if (typeof patch.allowWrites === 'boolean') rec.allowWrites = patch.allowWrites;
     if (rec.kind === 'pingone' && rec.auth === 'interactive' && typeof patch.loginHint === 'string') { const h = cleanLoginHint(patch.loginHint); if (h) rec.loginHint = h; else delete rec.loginHint; }
+    // PingFederate on a saved live connection: its base URL (enables PF login beside P1 login) and, optionally, the client id of the
+    // OAuth client on that PingFederate (else the connection's client id). An empty value removes it; a pf-default connection keeps its base.
+    if (rec.kind === 'pingone' && rec.auth === 'interactive' && !rec.offline) {
+      if (typeof patch.idpBaseUrl === 'string') {
+        const u = cleanIdpBase(patch.idpBaseUrl);
+        if (!u && rec.idp === 'pf') throw Object.assign(new Error('PingFederate needs its base URL (idpBaseUrl): this connection signs in at PingFederate by default'), { code: 'bad_request' });
+        if (u) rec.idpBaseUrl = u; else delete rec.idpBaseUrl;
+      }
+      if (typeof patch.pfClientId === 'string') { const c = cleanPfClientId(patch.pfClientId); if (c) rec.pfClientId = c; else delete rec.pfClientId; }
+    }
     save(all); return rec;
   }
   // Reset: every connection goes back to writes off (the safe state). Saved connections and their secrets are kept.
