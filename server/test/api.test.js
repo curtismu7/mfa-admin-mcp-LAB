@@ -35,7 +35,7 @@ test('connections: region is an allowlist (opt-in for others) and a non-loopback
   assert.equal((await s.call('POST', '/api/connections', inter(undefined))).status, 201);
 });
 test('login hint: set at create or later through settings, trimmed, cleared by an empty value, validated, and echoed by login/start', async () => {
-  const c = await add({ auth: 'interactive', clientSecret: undefined, loginHint: '  admin.user  ' });
+  const c = await add({ loginHint: '  admin.user  ' });
   assert.equal(c.loginHint, 'admin.user');
   const start = await s.call('POST', `/api/connections/${c.id}/login/start`, {});
   assert.equal(start.json.usernameHint, 'admin.user');
@@ -43,8 +43,8 @@ test('login hint: set at create or later through settings, trimmed, cleared by a
   assert.equal((await set('other@example.invalid')).json.loginHint, 'other@example.invalid');
   assert.equal((await set('')).json.loginHint, undefined, 'an empty value clears it');
   for (const bad of ['x'.repeat(257), 'a\nb', 'a\u0000b']) { const r = await set(bad); assert.equal(r.status, 400, JSON.stringify(bad)); assert.equal(r.json.error, 'bad_request'); }
-  assert.equal((await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, loginHint: 'a\nb' })).status, 400);
-  const w = await add(); // a worker connection has no sign-in, so a hint is not stored
+  assert.equal((await s.call('POST', '/api/connections', mockConn({ loginHint: 'a\nb' }))).status, 400);
+  const w = (await s.call('POST', '/api/connections', { kind: 'custom', label: 'plain', url: 'http://127.0.0.1:9/mcp' })).json; // a custom server has no sign-in, so a hint is not stored
   assert.equal((await s.call('POST', `/api/connections/${w.id}/settings`, { loginHint: 'x' })).json.loginHint, undefined);
 });
 test('connections: validation, secrets write-only, file mode 600 in a 700 dir', async () => {
