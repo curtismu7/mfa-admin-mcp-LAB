@@ -147,7 +147,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
       )}
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}
       {login && <LoginDialog conn={c} idp={login.idp} start={login.start} onClose={() => setLogin(null)}
-        onDone={(as) => { setLogin(null); say(`Signed in${as ? ` as ${as}` : ""}.`); onChange(); onTest(c.id, { modal: false }); }} />}
+        onDone={(as) => { setLogin(null); onSelect(c.id); say(`Signed in${as ? ` as ${as}` : ""}; ${c.label} is now the connection in use.`); onChange(); onTest(c.id, { modal: false }); }} />}
       <label className={`writes${c.allowWrites ? " writes--on" : ""}`}>
         <input type="checkbox" checked={c.allowWrites} onChange={(e) => setWrites(e.target.checked)} />
         Allow writes for this connection {c.allowWrites ? "(ON: write and destructive calls can run after confirmation)" : "(off: read tools only)"}
