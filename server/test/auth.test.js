@@ -130,3 +130,64 @@ test('worker: a token endpoint error that echoes the secret is scrubbed from the
     await assert.rejects(a.accessToken(worker({ clientSecret: SECRET })), (e) => e.code === 'token_request_failed' && !e.message.includes(SECRET) && e.message.includes('[redacted]'));
   } finally { stub.close(); }
 });
+
+// ---- pi.flow sign-in modal: password, OTP and device-selection steps ----
+const piflow = () => createAuth({ resolveBase: () => mock.base });
+
+test('pi.flow: straight-through sign-in (mock-admin) returns the connection + sub; the parked state is single use', async () => {
+  const a = piflow(); const c = inter();
+  const started = a.startPiFlowLogin(c);
+  const opened = await started.open();
+  assert.equal(opened.status, 'USERNAME_PASSWORD_REQUIRED');
+  const r = await a.piFlowCredentials(c, { state: opened.state, username: 'mock-admin', password: 'mock-password' });
+  assert.equal(r.connId, c.id); assert.equal(r.sub, 'mock-admin-user');
+  await assert.rejects(a.piFlowCredentials(c, { state: opened.state, username: 'mock-admin', password: 'mock-password' }), (e) => e.code === 'bad_state');
+});
+
+test('pi.flow: wrong credentials are a 401-shaped refusal, nothing signed in', async () => {
+  const a = piflow(); const c = inter();
+  const opened = await (a.startPiFlowLogin(c)).open();
+  await assert.rejects(a.piFlowCredentials(c, { state: opened.state, username: 'mock-admin', password: 'wrong' }), (e) => e.code === 'invalid_credentials');
+  assert.equal(a.status(c).signedIn, false);
+});
+
+test('pi.flow: mock-mfa parks the flow at OTP_REQUIRED; a wrong code re-prompts; 424242 completes', async () => {
+  const a = piflow(); const c = inter();
+  const opened = await (a.startPiFlowLogin(c)).open();
+  const r = await a.piFlowCredentials(c, { state: opened.state, username: 'mock-mfa', password: 'mock-password' });
+  assert.equal(r.step, 'otp');
+  assert.equal(r.devices.length, 1); assert.equal(r.devices[0].type, 'EMAIL');
+  // The parked state is alive again (respondAfterStep re-parked it) — the credentials state is single use, the OTP state is new.
+  await assert.rejects(a.piFlowOtp(c, { state: r.state ?? opened.state, otp: '000000' }), (e) => e.code === 'invalid_otp');
+  const done = await a.piFlowOtp(c, { state: opened.state, otp: '424242' });
+  assert.equal(done.sub, 'mock-mfa');
+  assert.equal(a.status(c).signedIn, true);
+});
+
+test('pi.flow: mock-two parks at DEVICE_SELECTION_REQUIRED; picking a device asks for the passcode; completing signs in', async () => {
+  const a = piflow(); const c = inter();
+  const opened = await (a.startPiFlowLogin(c)).open();
+  const r = await a.piFlowCredentials(c, { state: opened.state, username: 'mock-two', password: 'mock-password' });
+  assert.equal(r.step, 'device');
+  assert.deepEqual(r.devices.map((d) => d.id).sort(), ['dev-email-1', 'dev-sms-1']);
+  const next = await a.piFlowDevice(c, { state: opened.state, deviceId: 'dev-sms-1' });
+  assert.equal(next.step, 'otp'); assert.equal(next.devices[0].id, 'dev-sms-1');
+  const done = await a.piFlowOtp(c, { state: opened.state, otp: '424242' });
+  assert.equal(done.sub, 'mock-two');
+});
+
+test('pi.flow: a bad device id, a device-less otp and an expired parked state are refused', async () => {
+  const a = piflow(); const c = inter();
+  await assert.rejects(a.piFlowDevice(c, { state: 'nope', deviceId: 'dev-email-1' }), (e) => e.code === 'bad_state');
+  const opened = await (a.startPiFlowLogin(c)).open();
+  const r = await a.piFlowCredentials(c, { state: opened.state, username: 'mock-two', password: 'mock-password' });
+  // A bad device id consumes the parked state (single use) — the visitor starts the flow again.
+  await assert.rejects(a.piFlowDevice(c, { state: opened.state, deviceId: 'x' }), (e) => e.code === 'bad_device');
+  await assert.rejects(a.piFlowDevice(c, { state: opened.state, deviceId: 'dev-email-1' }), (e) => e.code === 'bad_state');
+  // Parked-state TTL: force age on a fresh flow, then any step refuses.
+  const opened2 = await (a.startPiFlowLogin(c)).open();
+  const r2 = await a.piFlowCredentials(c, { state: opened2.state, username: 'mock-two', password: 'mock-password' });
+  const parked = a._piFlows.get(r2.state ?? opened2.state);
+  parked.at -= 10 * 60_000;
+  await assert.rejects(a.piFlowDevice(c, { state: opened2.state, deviceId: 'dev-email-1' }), (e) => e.code === 'state_expired');
+});

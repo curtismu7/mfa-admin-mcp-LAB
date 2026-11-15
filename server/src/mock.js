@@ -198,8 +198,9 @@ export function createMock({ now = Date.now } = {}) {
       if (g === 'authorization_code') {
         const c = codes.get(f.get('code')); codes.delete(f.get('code'));
         if (!c || c.redirectUri !== f.get('redirect_uri') || c.clientId !== f.get('client_id') || pkceChallenge(f.get('code_verifier') || '') !== c.challenge) return send(res, 400, { error: 'invalid_grant' });
-        const out = issue(c.clientId, c.role, 'mock-admin-user', true);
-        out.id_token = idToken(c.envId, c.clientId, 'mock-admin-user', c.nonce);
+        const sub = c.sub || 'mock-admin-user';
+        const out = issue(c.clientId, c.role, sub, true);
+        out.id_token = idToken(c.envId, c.clientId, sub, c.nonce);
         return send(res, 200, out);
       }
       return send(res, 400, { error: 'unsupported_grant_type' });
@@ -214,7 +215,7 @@ export function createMock({ now = Date.now } = {}) {
       if (q.get('response_mode') === 'pi.flow') {
         const flows = mockFlows();
         const id = crypto.randomBytes(8).toString('hex');
-        flows.set(id, { challenge: q.get('code_challenge'), nonce: q.get('nonce'), state: q.get('state'), clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), role: roleOf(q.get('client_id')), envId: parts[0] });
+        flows.set(id, { challenge: q.get('code_challenge'), nonce: q.get('nonce'), state: q.get('state'), clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), role: roleOf(q.get('client_id')), envId: parts[0], idpHint: url.pathname.includes('/pf-ws/') ? 'pf' : null });
         return send(res, 200, { id, status: 'USERNAME_PASSWORD_REQUIRED', _links: { self: { href: `${url.origin}${url.pathname.replace(/authorization\.oauth2$/, 'authorize')}` } } }, 'application/json', { 'Set-Cookie': `ST=${id}-st; Path=/` });
       }
       const code = crypto.randomBytes(16).toString('hex');
@@ -226,7 +227,7 @@ export function createMock({ now = Date.now } = {}) {
     // The pi.flow password step: PingOne's vendor content type on /flows/{id}, PingFederate's on /pf-ws/authn/flows/{id}.
     const pfFlow = /^\/([^/]+)\/pf-ws\/authn\/flows\/([a-f0-9]+)$/.exec(url.pathname);
     const p1Flow = /^\/([^/]+)\/flows\/([a-f0-9]+)$/.exec(url.pathname);
-    if ((pfFlow || p1Flow) && req.method === 'POST') {
+    if ((pfFlow || p1Flow) && req.method === 'POST' && (req.headers['content-type'] || '').split(';')[0] === (pfFlow ? 'application/vnd.pingidentity.checkUsernamePassword+json' : 'application/vnd.pingidentity.usernamePassword.check+json')) {
       const [, envId, flowId] = pfFlow || p1Flow;
       const flows = mockFlows();
       const f = flows.get(flowId);
@@ -235,11 +236,56 @@ export function createMock({ now = Date.now } = {}) {
       if ((req.headers['content-type'] || '').split(';')[0] !== expected) return send(res, 415, { code: 'UNSUPPORTED_MEDIA_TYPE' });
       if (pfFlow && !req.headers['x-xsrf-header']) return send(res, 403, { code: 'CSRF_REQUIRED' });
       let b = {}; try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
-      if (b.username !== 'mock-admin' || b.password !== 'mock-password') return send(res, 400, { code: pfFlow ? 'CREDENTIAL_VALIDATION_FAILED' : 'INVALID_CREDENTIALS', details: [{ code: pfFlow ? 'CREDENTIAL_VALIDATION_FAILED' : 'INVALID_CREDENTIALS' }] });
+      // Three mock accounts (the dialog names them): mock-admin signs straight through; mock-mfa asks for an
+      // OTP on the single email device (accept 424242, the family's mock passcode); mock-two offers two devices
+      // and the picked one asks for the passcode too. Wrong credentials stay per-provider.
+      const account = { 'mock-admin': { next: 'COMPLETED' }, 'mock-mfa': { next: 'OTP_REQUIRED' }, 'mock-two': { next: 'DEVICE_SELECTION_REQUIRED' } }[b.username];
+      const pwOk = b.password === 'mock-password';
+      if (!account || !pwOk) return send(res, 400, { code: pfFlow ? 'CREDENTIAL_VALIDATION_FAILED' : 'INVALID_CREDENTIALS', details: [{ code: pfFlow ? 'CREDENTIAL_VALIDATION_FAILED' : 'INVALID_CREDENTIALS' }] });
+      f.username = b.username;
+      f.sub = b.username === 'mock-admin' ? 'mock-admin-user' : b.username;
+      if (account.next === 'OTP_REQUIRED') {
+        flows.set(flowId, { ...f, awaiting: 'otp' });
+        return send(res, 200, { id: flowId, status: 'OTP_REQUIRED', selectedDevice: { id: 'dev-email-1' }, _embedded: { devices: [{ id: 'dev-email-1', type: 'EMAIL', usableStatus: { status: 'ENABLED' }, email: 'mock****@tenant.example' }] } });
+      }
+      if (account.next === 'DEVICE_SELECTION_REQUIRED') {
+        flows.set(flowId, { ...f, awaiting: 'device' });
+        return send(res, 200, { id: flowId, status: 'DEVICE_SELECTION_REQUIRED', devices: [
+          { id: 'dev-email-1', type: 'EMAIL', usableStatus: { status: 'ENABLED' }, email: 'mock****@tenant.example' },
+          { id: 'dev-sms-1', type: 'SMS', usableStatus: { status: 'ENABLED' }, phone: '+1******42' },
+        ] });
+      }
       flows.delete(flowId);
       const code = crypto.randomBytes(16).toString('hex');
-      codes.set(code, { clientId: f.clientId, redirectUri: f.redirectUri, challenge: f.challenge, nonce: f.nonce, role: f.role, envId });
+      codes.set(code, { clientId: f.clientId, redirectUri: f.redirectUri, challenge: f.challenge, nonce: f.nonce, role: f.role, envId, sub: f.sub });
       return send(res, 200, { id: flowId, status: 'COMPLETED', authorizeResponse: { code, state: f.state } });
+    }
+    // The pi.flow OTP step: the code 424242 (the family's mock passcode) completes; anything else is the
+    // provider's wrong-passcode shape so the modal re-prompts in place.
+    const otpFlow = /^\/([^/]+)\/(pf-ws\/authn\/)?flows\/([a-f0-9]+)$/.exec(url.pathname);
+    if (otpFlow && req.method === 'POST' && (req.headers['content-type'] || '').startsWith('application/vnd.pingidentity.') && /otp/i.test(req.headers['content-type'])) {
+      const [, envId, , flowId] = otpFlow;
+      const f = mockFlows().get(flowId);
+      if (!f || f.awaiting !== 'otp' || !/ST=/.test(String(req.headers.cookie || ''))) return send(res, 401, { code: 'UNAUTHORIZED' });
+      if (f.idpHint === 'pf' && !req.headers['x-xsrf-header']) return send(res, 403, { code: 'CSRF_REQUIRED' });
+      let b = {}; try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
+      if (b.otp !== '424242') return send(res, 400, { code: f.idpHint === 'pf' ? 'INVALID_OTP' : 'OTP_VALIDATION_FAILED', details: [{ code: f.idpHint === 'pf' ? 'INVALID_OTP' : 'OTP_VALIDATION_FAILED' }] });
+      mockFlows().delete(flowId);
+      const code = crypto.randomBytes(16).toString('hex');
+      codes.set(code, { clientId: f.clientId, redirectUri: f.redirectUri, challenge: f.challenge, nonce: f.nonce, role: f.role, envId, sub: f.sub });
+      return send(res, 200, { id: flowId, status: 'COMPLETED', authorizeResponse: { code, state: f.state } });
+    }
+    // The pi.flow device-selection step: the picked device asks for the passcode (a fresh OTP_REQUIRED).
+    const devFlow = /^\/([^/]+)\/(pf-ws\/authn\/)?flows\/([a-f0-9]+)$/.exec(url.pathname);
+    if (devFlow && req.method === 'POST' && (req.headers['content-type'] || '').startsWith('application/vnd.pingidentity.') && /selectDevice|device\.select/i.test(req.headers['content-type'])) {
+      const [, envId, , flowId] = devFlow;
+      const f = mockFlows().get(flowId);
+      if (!f || f.awaiting !== 'device' || !/ST=/.test(String(req.headers.cookie || ''))) return send(res, 401, { code: 'UNAUTHORIZED' });
+      let b = {}; try { b = JSON.parse(await readBody(req)); } catch { /* bad */ }
+      const picked = b.device?.id || b.deviceRef?.id;
+      if (!picked || !['dev-email-1', 'dev-sms-1'].includes(picked)) return send(res, 400, { code: 'INVALID_REQUEST' });
+      flows.set(flowId, { ...f, awaiting: 'otp' });
+      return send(res, 200, { id: flowId, status: 'OTP_REQUIRED', selectedDevice: { id: picked }, _embedded: { devices: [picked === 'dev-sms-1' ? { id: 'dev-sms-1', type: 'SMS', usableStatus: { status: 'ENABLED' }, phone: '+1******42' } : { id: 'dev-email-1', type: 'EMAIL', usableStatus: { status: 'ENABLED' }, email: 'mock****@tenant.example' }] } });
     }
     return send(res, 404, { error: 'not_found' });
   }

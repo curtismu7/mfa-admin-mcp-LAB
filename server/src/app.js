@@ -353,7 +353,18 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     if (isMock(conn)) await ensureMock();
     const state = String(req.body?.state || '');
     const r = await withPermits(conn, () => auth.piFlowCredentials(conn, { state, username: req.body?.username, password: req.body?.password }));
-    res.json({ ok: true, connection: r.connId, sub: r.sub, returnTo: r.returnTo });
+    // A finished sign-in answers { connection, sub }; an MFA step answers { step, devices } for the modal.
+    res.json(r.step ? { ok: true, ...r } : { ok: true, connection: r.connId, sub: r.sub, returnTo: r.returnTo });
+  }));
+  app.post('/api/connections/:id/login/pi-flow/otp', h(async (req, res, conn) => {
+    if (isMock(conn)) await ensureMock();
+    const r = await withPermits(conn, () => auth.piFlowOtp(conn, { state: String(req.body?.state || ''), otp: req.body?.otp }));
+    res.json(r.step ? { ok: true, ...r } : { ok: true, connection: r.connId, sub: r.sub, returnTo: r.returnTo });
+  }));
+  app.post('/api/connections/:id/login/pi-flow/device', h(async (req, res, conn) => {
+    if (isMock(conn)) await ensureMock();
+    const r = await withPermits(conn, () => auth.piFlowDevice(conn, { state: String(req.body?.state || ''), deviceId: req.body?.deviceId }));
+    res.json(r.step ? { ok: true, ...r } : { ok: true, connection: r.connId, sub: r.sub, returnTo: r.returnTo });
   }));
 
   app.get('/api/audit', (_req, res) => res.json({ entries: audit.recent() }));
