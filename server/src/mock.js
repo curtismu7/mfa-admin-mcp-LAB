@@ -8,6 +8,7 @@ import http from 'node:http';
 import { pkceChallenge } from './auth.js';
 
 export const FIXTURE_LABEL = 'illustrative sample, not a recording';
+export const SYNTHETIC_NOTE = 'invented sample: the mock has no data for this tool. A recorded fixture replaces this with a real response.';
 const obj = (properties, required = []) => ({ type: 'object', properties, required });
 const S = { type: 'string' };
 const ENV = { environmentId: S };
@@ -96,6 +97,7 @@ export function createMock({ now = Date.now } = {}) {
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'mock-1', alg: 'RS256', use: 'sig' };
   let n = 0; let server; let base = '';
   const recordedFixtures = new Map(); // tool -> { source, recordedAt, result }: real responses captured from a Live server
+  const recordedTools = new Map(); // tool -> { name, description, inputSchema, annotations, role }: a Live server's tools/list, answered with synthetic replies
 
   const roleOf = (clientId) => clients.get(clientId)?.role || (/^viewer/i.test(clientId) ? 'viewer' : 'admin');
   const issuer = (env) => config.issOverride || `${base}/${env}/as`;
@@ -151,12 +153,25 @@ export function createMock({ now = Date.now } = {}) {
       case 'getUser': return t.users.find((x) => x.id === a.userId) || null;
       case 'createUser': { const x = { id: `u${t.users.length + 1}`, username: a.username, enabled: true }; t.users.push(x); return x; }
       case 'deleteUser': t.users = t.users.filter((x) => x.id !== a.userId); return { deleted: a.userId };
-      default: return { ok: true, note: `${name} ran against the in-memory fake tenant` };
+      // Any tool this catalog does not know (the mock demo can be pointed at a custom server's tool
+      // list): synthesize a plausible read-shaped answer from the arguments instead of a bare "ok",
+      // so the demo shows real-looking JSON-RPC even before anyone records a fixture.
+      default: return synthetic(name, a);
     }
   }
 
+  // A best-effort fake for a tool outside the catalog. Read-shaped (a listing or a record), echoed
+  // arguments included, and always carrying the synthetic label — never mistaken for recorded data.
+  function synthetic(name, a) {
+    const list = /^(list|search|find)/i.test(name);
+    const record = { tool: name, synthetic: true, note: SYNTHETIC_NOTE, arguments: a };
+    return list
+      ? { items: [record], total: 1, synthetic: true }
+      : record;
+  }
+
   function rpc(role, msg) {
-    const tools = CATALOG.filter((t) => role === 'admin' || t.role === 'viewer');
+    const tools = [...CATALOG, ...recordedTools.values()].filter((t) => role === 'admin' || t.role === 'viewer');
     switch (msg.method) {
       case 'initialize': return { protocolVersion: '2025-06-18', serverInfo: { name: 'mock-pingone-mcp', version: FIXTURE_LABEL }, capabilities: { tools: {} } };
       case 'tools/list': return { tools: tools.map(stripRole) };
@@ -300,6 +315,9 @@ export function createMock({ now = Date.now } = {}) {
     // Real responses recorded from a Live server; served by tools/call before the in-process sample.
     setFixtures: (all) => { recordedFixtures.clear(); for (const [k, v] of Object.entries(all || {})) recordedFixtures.set(k, v); },
     fixturesLoaded: () => recordedFixtures.size,
+    // Tool lists recorded from Live servers: listed by the mock and answered with a synthetic reply (or a fixture).
+    // A name the sample catalog already has keeps the catalog's tool. role 'viewer' = the tool classes as read.
+    setRecordedTools: (list) => { recordedTools.clear(); for (const t of list || []) if (!CATALOG.some((c) => c.name === t.name)) recordedTools.set(t.name, t); },
     revoke: (access) => tokens.delete(access),
     // Reset: the fake tenant goes back to its starting records and every token, code and recorded call is dropped.
     reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); flows.clear(); config.calls.length = 0; config.flowSteps.length = 0; },

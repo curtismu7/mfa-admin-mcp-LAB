@@ -8,7 +8,7 @@ import { analyze, LIMITS, RULES } from './scanner/index.js';
 import { MODES, MODE_KEY, dataDir as cfgDataDir, liveRefusal, modeFrom, webDist } from './config.js';
 import { createDiagrams, DIAGRAM_DIR } from './diagrams.js';
 import { createAudit, decide, argsHash } from './gate.js';
-import { createFixtures } from './fixtures.js';
+import { createFixtures, createRecordedTools } from './fixtures.js';
 import { createHealth } from './health.js';
 import { createMcpClient } from './mcpClient.js';
 import { createMock, MOCK_LOGIN } from './mock.js';
@@ -31,6 +31,9 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   store ||= createStore({ dir });
   const audit = createAudit({ dir });
   const fixtures = createFixtures({ dir });
+  const recordedTools = createRecordedTools({ dir });
+  // The mock lists recorded tools to a viewer only when they class as read, the way the sample catalog is role-gated.
+  const feedRecordedTools = () => theMock.setRecordedTools?.(annotate(recordedTools.all()).map(({ name, description, inputSchema, annotations, class: c }) => ({ name, description, inputSchema, annotations, role: c === 'read' ? 'viewer' : 'admin' })));
   const theMock = mock || createMock();
   let mockStarted = Boolean(mock?.base);
   const ensureMock = async () => { if (!mockStarted) { await theMock.start(); mockStarted = true; } };
@@ -357,6 +360,18 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     if (gone && conn) audit.record({ conn, tool: req.params.tool, outcome: 'fixture_deleted' }, secretsFor(conn));
     res.json({ ok: gone });
   }));
+  // ---- recorded tool lists: a Live server's tools/list, so the mock demo lists those tools and answers
+  // each with a labelled synthetic reply. Only metadata is recorded; no tool is called.
+  app.get('/api/recorded-tools', (_req, res) => { const all = recordedTools.all(); res.json({ count: all.length, tools: all.map(({ name, source, recordedAt }) => ({ name, source, recordedAt })) }); });
+  app.post('/api/connections/:id/record-tools', h(async (_req, res, conn) => {
+    if (conn.offline) return res.status(400).json({ error: 'bad_request', message: 'record the tool list of a Live connection; the mock demo already knows its own tools' });
+    const secrets = secretsFor(conn);
+    const r = recordedTools.record(await clientFor(conn).listTools(), { source: `recorded from ${scrub(conn.label || 'a live server', secrets)} (${conn.kind}), ${new Date().toISOString().slice(0, 10)}`, secrets });
+    feedRecordedTools();
+    audit.record({ conn, tool: 'tools/list', outcome: 'tools_recorded' }, secrets);
+    res.status(201).json({ ok: true, ...r });
+  }));
+  app.delete('/api/recorded-tools', (_req, res) => { const removed = recordedTools.clear(); feedRecordedTools(); res.json({ ok: true, removed }); });
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
 
 
@@ -372,8 +387,9 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
 
   // Recorded fixtures replay real responses inside the mock; load what is on disk now and keep the mock in step.
   theMock.setFixtures?.(fixtures.all());
+  feedRecordedTools();
 
-  app.locals.store = store; app.locals.auth = auth; app.locals.audit = audit; app.locals.mock = theMock; app.locals.fixtures = fixtures;
+  app.locals.store = store; app.locals.auth = auth; app.locals.audit = audit; app.locals.mock = theMock; app.locals.fixtures = fixtures; app.locals.recordedTools = recordedTools;
   app.locals.close = async () => { health.stop(); if (!mock && mockStarted) await theMock.stop(); };
   return app;
 }

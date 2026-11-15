@@ -126,7 +126,7 @@ function Shell() {
 
   const page = (() => {
     switch (route.page) {
-      case "tools": return <Tools conn={active} tools={ts.id === active?.id ? ts.tools : null} loading={ts.loading} error={ts.error} test={active && tests[active.id]} testBusy={testBusy === active?.id} now={now} conns={modeConns} onPick={select} />;
+      case "tools": return <Tools conn={active} tools={ts.id === active?.id ? ts.tools : null} loading={ts.loading} error={ts.error} test={active && tests[active.id]} testBusy={testBusy === active?.id} now={now} conns={modeConns} onPick={select} onReload={() => active && loadTools(active.id)} />;
       case "tool": return <Tool conn={active} tools={ts.id === active?.id ? ts.tools : null} name={route.rest} defaults={defaults} />;
       case "raw": return <Raw conn={active} />;
       case "audit": return <Audit />;

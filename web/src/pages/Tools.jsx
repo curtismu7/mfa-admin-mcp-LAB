@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import HealthCard from "../components/HealthCard.jsx";
+import RecordedTools from "../components/RecordedTools.jsx";
 import ScanPanel from "../components/ScanPanel.jsx";
 import { GROUPS, classWhy, groupTools } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
@@ -10,7 +11,7 @@ export function ClassBadge({ t }) {
   return <span className={`badge badge--${t.class}`} title={classWhy(t)} data-testid="class-badge">{t.class}</span>;
 }
 
-export default function Tools({ conn, tools, loading, error, test, testBusy, now, conns, onPick }) {
+export default function Tools({ conn, tools, loading, error, test, testBusy, now, conns, onPick, onReload }) {
   const [q, setQ] = useState("");
   const [cls, setCls] = useState("all");
   const { present } = usePresent();
@@ -39,6 +40,7 @@ export default function Tools({ conn, tools, loading, error, test, testBusy, now
         </div>
       )}
       <ScanPanel key={conn.id} conn={conn} />
+      <RecordedTools conn={conn} onChanged={onReload} />
       <div className="card controls">
         <label className="field">Search<input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="name or description" /></label>
         <label className="field">Safety class
