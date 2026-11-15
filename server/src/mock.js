@@ -81,6 +81,7 @@ export function createMock({ now = Date.now } = {}) {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'mock-1', alg: 'RS256', use: 'sig' };
   let n = 0; let server; let base = '';
+  const recordedFixtures = new Map(); // tool -> { source, recordedAt, result }: real responses captured from a Live server
 
   const roleOf = (clientId) => clients.get(clientId)?.role || (/^viewer/i.test(clientId) ? 'viewer' : 'admin');
   const issuer = (env) => config.issOverride || `${base}/${env}/as`;
@@ -147,8 +148,13 @@ export function createMock({ now = Date.now } = {}) {
       case 'tools/list': return { tools: tools.map(stripRole) };
       case 'tools/call': {
         const name = msg.params?.name; const a = msg.params?.arguments || {};
-        if (!tools.some((t) => t.name === name)) return { error: { code: -32602, message: `unknown tool: ${String(name).slice(0, 60)}` } };
+        const fixture = recordedFixtures.get(name);
+        // A tool with a recorded fixture is discoverable even though it is not in the sample catalog:
+        // the recording came from a real server, so the mock answers for it. The recording carries the
+        // real JSON-RPC result verbatim, labelled as a recording, never re-generated.
+        if (!tools.some((t) => t.name === name) && !fixture) return { error: { code: -32602, message: `unknown tool: ${String(name).slice(0, 60)}` } };
         config.calls.push({ name, arguments: a });
+        if (fixture) return { result: { ...fixture.result, _meta: { ...(fixture.result?._meta || {}), recordedFrom: fixture.source, recordedAt: fixture.recordedAt } } };
         return { result: { content: [{ type: 'text', text: JSON.stringify(callTool(name, a)) }] } };
       }
       case 'resources/list': return { resources: [] };
@@ -218,6 +224,9 @@ export function createMock({ now = Date.now } = {}) {
     config, tenant, clients, tokens, refreshes,
     get base() { return base; },
     handle,
+    // Real responses recorded from a Live server; served by tools/call before the in-process sample.
+    setFixtures: (all) => { recordedFixtures.clear(); for (const [k, v] of Object.entries(all || {})) recordedFixtures.set(k, v); },
+    fixturesLoaded: () => recordedFixtures.size,
     revoke: (access) => tokens.delete(access),
     // Reset: the fake tenant goes back to its starting records and every token, code and recorded call is dropped.
     reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); config.calls.length = 0; },

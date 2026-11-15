@@ -78,7 +78,8 @@ export default function Tool({ conn, tools, name, defaults = {} }) {
   const [text, setText] = useState("{}");
   const [parseErr, setParseErr] = useState("");
   const g = useGatedCall();
-  useEffect(() => { setArgs(initial); setMode("form"); g.clear(); }, [name, conn?.id, tool?.name, initial]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [rec, setRec] = useState({ busy: false, note: "" });
+  useEffect(() => { setArgs(initial); setMode("form"); g.clear(); setRec({ busy: false, note: "" }); }, [name, conn?.id, tool?.name, initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!conn) return <><h1>Tool</h1><p>Select a connection first.</p></>;
   if (!tool) return <><h1>Tool</h1><p>This identity does not see a tool called <Untrusted text={name} />. The list is gated by role. <a href="#/tools">Back to the tools</a></p></>;
@@ -120,7 +121,17 @@ export default function Tool({ conn, tools, name, defaults = {} }) {
         {warnings.length > 0 && <ul className="warns" data-testid="warnings">{warnings.map((w) => <li key={`${w.kind}${w.param}`}><strong>{w.kind === "missing" ? "Missing" : "Warning"}:</strong> {w.message}</li>)}</ul>}
         <button type="button" className="primary" onClick={call} disabled={g.busy}>{g.busy ? "Calling…" : "Call"}</button>
       </section>
-      <CallView response={g.response} />
+      <CallView response={g.response} record={{
+        can: conn && !conn.offline,
+        busy: rec.busy,
+        note: rec.note,
+        onRecord: async (j) => {
+          setRec({ busy: true, note: "" });
+          const r = await api.post("/api/fixtures", { tool: tool.name, result: j.result, connectionId: conn.id });
+          setRec({ busy: false, note: r.ok ? `Recorded: the mock demo now replays this real response for ${tool.name}.` : r.json?.message || "Could not record." });
+          if (!r.ok) throw new Error(r.json?.message || "Could not record.");
+        },
+      }} />
       {g.gate && <ConfirmDialog tool={tool.name} gate={g.gate} busy={g.busy} onConfirm={g.confirm} onCancel={g.cancel} />}
       <StoryPanel mode="gate" present={present} />
     </>

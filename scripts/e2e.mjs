@@ -215,6 +215,9 @@ try {
   await page.getByRole('button', { name: 'Send' }).click();
   await page.getByTestId('call-view').getByText(/listApplications/).first().waitFor();
   await page.getByLabel(/^Method/).fill('tools/call');
+  // Filling Method triggers an async fillFromTools() that rewrites the Params textarea; wait for its
+  // status note so our params fill below lands after (and is not clobbered by) that rewrite.
+  await page.getByRole('status').filter({ hasText: /filled with/i }).waitFor();
   await page.getByLabel(/Params/).fill('{"name":"deleteFidoPolicy","arguments":{"environmentId":"11111111-2222-4333-8444-555555555555","policyId":"f1"}}');
   await page.getByRole('button', { name: 'Send' }).click();
   await dlg.waitFor();
@@ -276,6 +279,7 @@ try {
   await go('audit');
   check(await page.getByTestId('audit-row').count() === 0, 'Reset cleared the audit history');
   await go('connections');
+  await page.locator('[data-testid="conn-card"]').first().waitFor(); // the list loads asynchronously after the reload
   check(await page.locator('[data-testid="conn-card"]').count() >= 1, 'Reset kept the saved connections');
 
   // a second server bound non-loopback: the Live (Real) button is disabled with the reason, and the page stays in Mock
