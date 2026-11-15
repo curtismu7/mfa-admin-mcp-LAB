@@ -45,11 +45,11 @@ fs.mkdirSync(shots, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM || undefined });
 let page = null;
+const external = []; const bodies = []; const errors = [];
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
   page = await ctx.newPage();
   const shot = (name) => page.screenshot({ path: path.join(shots, `${name}.png`), fullPage: true });
-  const external = []; const bodies = []; const errors = [];
   page.on('request', (r) => { const u = new URL(r.url()); if (!/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
   page.on('response', async (r) => { try { if (r.url().includes('/api/')) bodies.push(await r.text()); } catch { /* redirect or gone */ } });
   // The gate's own answers (401 interactive not signed in, 403 writes off / method refused, 409 confirm needed) log a browser console line by design.
