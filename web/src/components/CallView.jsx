@@ -1,12 +1,25 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { pretty, redactForDisplay } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
 
 // The exact JSON-RPC request this app sends and the response it got back (redacted: sensitive-looking argument names
 // are masked here, and the server has already scrubbed its own secrets from the reply). All text, never HTML.
 // `record`: optional { can, onRecord, busy, note } — "Record as fixture" saves a real response for the mock to replay.
-export default function CallView({ response, record }) {
+// `sample`: optional { tool } — after a successful call, a recorded fixture for this tool is fetched and shown
+// automatically ("Sample JSON-RPC response"), so users see the recorded data without hunting for it.
+export default function CallView({ response, record, sample }) {
   const [err, setErr] = useState("");
+  const [fixture, setFixture] = useState(null);
+  useEffect(() => {
+    setFixture(null);
+    if (!sample?.tool || !response?.ok) return;
+    let alive = true;
+    fetch(`/api/fixtures/${encodeURIComponent(sample.tool)}`)
+      .then((r) => r.json())
+      .then((f) => { if (alive && f) setFixture(f); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [sample?.tool, response?.ok]);
   if (!response) return null;
   const j = response.json || {};
   const blocked = !response.ok;
@@ -24,6 +37,12 @@ export default function CallView({ response, record }) {
         <div><h4>Request (as sent to the MCP server; id assigned by this app)</h4><Untrusted block text={pretty(redactForDisplay(response.request))} /></div>
         <div><h4>Response (untrusted server text, shown inert)</h4><Untrusted block text={pretty(redactForDisplay(response.ok ? { jsonrpc: "2.0", result: j.result } : j))} /></div>
       </div>
+      {fixture && (
+        <div data-testid="sample-jsonrpc">
+          <h4>Sample JSON-RPC response (recorded from a real server, {new Date(fixture.recordedAt).toLocaleDateString()})</h4>
+          <Untrusted block text={pretty(redactForDisplay(fixture.result))} />
+        </div>
+      )}
       {record?.can && response.ok && (
         <div className="row wrap">
           <button type="button" onClick={doRecord} disabled={record.busy} data-testid="record-fixture">{record.busy ? "Recording…" : "Record as fixture"}</button>

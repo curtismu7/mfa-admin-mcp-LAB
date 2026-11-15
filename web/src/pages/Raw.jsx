@@ -47,7 +47,7 @@ export default function Raw({ conn }) {
         {err && <p className="err-text" role="alert">{err}</p>}
         <button type="button" className="primary" onClick={send} disabled={g.busy}>{g.busy ? "Sending…" : "Send"}</button>
       </section>
-      <CallView response={g.response} record={{
+      <CallView response={g.response} sample={{ tool: (() => { try { return gated ? JSON.parse(params)?.name : undefined; } catch { return undefined; } })() }} record={{
         can: gated && conn && !conn.offline,
         busy: rec.busy,
         note: rec.note,

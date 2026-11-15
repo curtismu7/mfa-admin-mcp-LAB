@@ -121,7 +121,7 @@ export default function Tool({ conn, tools, name, defaults = {} }) {
         {warnings.length > 0 && <ul className="warns" data-testid="warnings">{warnings.map((w) => <li key={`${w.kind}${w.param}`}><strong>{w.kind === "missing" ? "Missing" : "Warning"}:</strong> {w.message}</li>)}</ul>}
         <button type="button" className="primary" onClick={call} disabled={g.busy}>{g.busy ? "Calling…" : "Call"}</button>
       </section>
-      <CallView response={g.response} record={{
+      <CallView response={g.response} sample={{ tool: tool.name }} record={{
         can: conn && !conn.offline,
         busy: rec.busy,
         note: rec.note,
