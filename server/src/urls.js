@@ -49,6 +49,7 @@ export function liveHosts(conn, { container = process.env.MFAADM_CONTAINER === '
   };
   if (conn.kind === 'pingone') {
     let as = []; try { as = hosts(asBase(conn)); } catch { /* a PingFederate connection with no base URL has no authorization host to permit */ }
+    if (conn.idp !== 'pf' && conn.idpBaseUrl) as = as.concat(hosts(asBase({ ...conn, idp: 'pf' }))); // PF login beside the PingOne default
     return as.concat(hosts(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })));
   }
   return hosts(conn.url);

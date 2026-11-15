@@ -72,6 +72,8 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
   // RFC 8707 resource indicator: the MCP URL this connection calls (the in-process mock's for an offline connection). PingOne only.
   const resourceOf = (conn) => mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle, offlineBase: resolveBase(conn) });
   const withResource = (conn, idp, params) => (idp === 'pf' ? params : { ...params, resource: resourceOf(conn) });
+  // The OAuth client at the authorization server that runs this sign-in: PingFederate may have its own client id on the connection.
+  const clientOf = (conn, idp) => (idp === 'pf' && conn.pfClientId) || conn.clientId;
   const refuseLegacy = (conn) => { if (conn.kind === 'pingone' && conn.auth === 'worker') throw authError('worker_unsupported', LEGACY_WORKER); };
 
   async function tokenRequest(conn, params, { idp } = {}) {
@@ -92,9 +94,10 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     return json;
   }
 
-  function remember(conn, json, prev) {
+  // idp: the authorization server that issued these tokens, so a refresh goes back to it (a PF login on a PingOne-default connection).
+  function remember(conn, json, prev, idp = prev?.idp) {
     const ttl = Number(json.expires_in) > 0 ? Number(json.expires_in) : 3600;
-    const rec = { accessToken: json.access_token, refreshToken: json.refresh_token || prev?.refreshToken || null, expiresAt: now() + ttl * 1000, sub: prev?.sub || null };
+    const rec = { accessToken: json.access_token, refreshToken: json.refresh_token || prev?.refreshToken || null, expiresAt: now() + ttl * 1000, sub: prev?.sub || null, idp: idp || conn.idp || 'pingone' };
     tokens.set(conn.id, rec);
     return rec;
   }
@@ -102,7 +105,8 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
   async function refresh(conn) {
     const t = tokens.get(conn.id);
     if (!t?.refreshToken) return false;
-    try { remember(conn, await tokenRequest(conn, withResource(conn, conn.idp, { grant_type: 'refresh_token', refresh_token: t.refreshToken, client_id: conn.clientId })), t); return true; }
+    const idp = t.idp || conn.idp;
+    try { remember(conn, await tokenRequest(conn, withResource(conn, idp, { grant_type: 'refresh_token', refresh_token: t.refreshToken, client_id: clientOf(conn, idp) }), { idp }), t); return true; }
     catch { tokens.delete(conn.id); return false; }
   }
 
@@ -155,7 +159,7 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     pruneLogins();
     const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
     const redirectUri = conn.redirectUri || PI_FLOW_REDIRECT_URI;
-    const q = new URLSearchParams(withResource(conn, eff, { response_type: 'code', client_id: conn.clientId, redirect_uri: redirectUri, scope: 'openid offline_access', nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' }));
+    const q = new URLSearchParams(withResource(conn, eff, { response_type: 'code', client_id: clientOf(conn, eff), redirect_uri: redirectUri, scope: 'openid offline_access', nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' }));
     if (conn.loginHint) q.set('login_hint', conn.loginHint); // advisory for PingOne (the dialog still takes whatever is typed); PingFederate binds the flow to it
     let res; let flow = null;
     try {
@@ -216,10 +220,10 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
       if (!code && r.headers.get('location')) { try { code = new URL(r.headers.get('location')).searchParams.get('code') || ''; } catch { /* not a URL */ } }
     }
     if (!code) throw authError('pi_flow_no_code', 'the sign-in finished but no authorization code came back');
-    const json = await tokenRequest(conn, withResource(conn, login.idp, { grant_type: 'authorization_code', code: String(code), redirect_uri: login.redirectUri, client_id: conn.clientId, code_verifier: login.verifier }), { idp: login.idp });
+    const json = await tokenRequest(conn, withResource(conn, login.idp, { grant_type: 'authorization_code', code: String(code), redirect_uri: login.redirectUri, client_id: clientOf(conn, login.idp), code_verifier: login.verifier }), { idp: login.idp });
     if (!json.id_token) throw authError('bad_id_token', 'no id_token returned, so the nonce cannot be checked');
     const claims = await verifyIdToken(conn, json.id_token, login.nonce, { idp: login.idp });
-    const rec = remember(conn, json); rec.sub = String(claims.sub || '').slice(0, 80) || null;
+    const rec = remember(conn, json, null, login.idp); rec.sub = String(claims.sub || '').slice(0, 80) || null;
     return { step: 'done', as: rec.sub };
   }
 
@@ -283,8 +287,10 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     let ok = false;
     try { ok = crypto.createVerify(alg.digest).update(signed).verify({ key: crypto.createPublicKey({ key: jwk, format: 'jwk' }), ...(alg.ec ? { dsaEncoding: 'ieee-p1363' } : {}) }, sig); } catch { ok = false; } // a malformed signature or key throws; it is a refusal, not a crash
     if (!ok) throw authError('bad_id_token', 'id_token signature does not verify');
-    if (claims.iss !== baseOf(eff)) throw authError('iss_mismatch', 'id_token issuer is not this environment');
-    if (![].concat(claims.aud).includes(conn.clientId)) throw authError('aud_mismatch', 'id_token audience is not this client');
+    // PingFederate's issuer is its base URL as configured in PF; some set it to <base>/as. Both are tied to the PingFederate saved on the connection.
+    const issuers = eff.idp === 'pf' ? [baseOf(eff), baseOf(eff).replace(/\/as$/, '')] : [baseOf(eff)];
+    if (!issuers.includes(claims.iss)) throw authError('iss_mismatch', 'id_token issuer is not this environment');
+    if (![].concat(claims.aud).includes(clientOf(conn, eff.idp))) throw authError('aud_mismatch', 'id_token audience is not this client');
     if (!(claims.exp * 1000 > now())) throw authError('bad_id_token', 'id_token expired');
     if (claims.nonce !== nonce) throw authError('nonce_mismatch', 'id_token nonce does not match');
     return claims;

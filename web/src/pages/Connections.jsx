@@ -123,7 +123,7 @@ function PresetRow({ p, conns, activeId, onConnect, onSelect, say }) {
   );
 }
 
-const PF_NEEDS = "PF login needs a PingFederate base URL: add a connection with Authorization server = PingFederate.";
+const PF_NEEDS = "PF login needs a PingFederate base URL: add it under PingFederate on this card and press Save PingFederate.";
 
 function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
@@ -139,7 +139,10 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const [hint, setHint] = useState(c.loginHint || "");
   const saveHint = (e) => { e.preventDefault(); act(() => api.post(`/api/connections/${c.id}/settings`, { loginHint: hint }), hint.trim() ? `Sign-in username hint saved for ${c.label}.` : `Sign-in username hint cleared for ${c.label}.`); };
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
-  const pfReady = c.offline === true || (c.idp === "pf" && Boolean(c.idpBaseUrl)); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
+  const pfReady = c.offline === true || Boolean(c.idpBaseUrl); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
+  const [pf, setPf] = useState({ base: c.idpBaseUrl || "", client: c.pfClientId || "" });
+  const pfChanged = pf.base.trim() !== (c.idpBaseUrl || "") || pf.client.trim() !== (c.pfClientId || "");
+  const savePf = (e) => { e.preventDefault(); act(() => api.post(`/api/connections/${c.id}/settings`, { idpBaseUrl: pf.base, pfClientId: pf.client }), pf.base.trim() ? `PingFederate saved for ${c.label}: PF login is available.` : `PingFederate removed from ${c.label}.`); };
   return (
     <li className="card" data-state={active ? "active" : undefined} data-testid="conn-card">
       <div className="row between">
@@ -147,7 +150,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         <span className="chip">{c.kind === "pingone" ? (c.offline ? "mock demo" : "PingOne sign-in") : c.kind}</span>
       </div>
       <p className="meta">
-        {c.kind === "pingone" ? <>Region {c.region}, environment <code>{c.envId}</code>, client <code>{c.clientId}</code>, secret: none (public client)</> : <>URL <code>{c.url}</code>, credential: {c.token || "not set"}</>}
+        {c.kind === "pingone" ? <>Region {c.region}, environment <code>{c.envId}</code>, client <code>{c.clientId}</code>, secret: none (public client){c.idpBaseUrl && !c.offline && <>; PingFederate <code>{c.idpBaseUrl}</code>{c.pfClientId && <>, PF client <code>{c.pfClientId}</code></>}</>}</> : <>URL <code>{c.url}</code>, credential: {c.token || "not set"}</>}
       </p>
       <div className="row wrap">
         <button type="button" aria-pressed={active} onClick={() => onSelect(c.id)}>{active ? "In use" : "Use this connection"}</button>
@@ -169,6 +172,18 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
             <input value={hint} onChange={(e) => setHint(e.target.value)} maxLength={256} spellCheck="false" autoComplete="off" data-testid="card-login-hint" />
           </label>
           <button type="submit" data-testid="card-login-hint-save" disabled={hint.trim() === (c.loginHint || "")}>Save hint</button>
+        </form>
+      )}
+      {c.kind === "pingone" && c.auth === "interactive" && !c.offline && !st.signedIn && (
+        <form className="row wrap" onSubmit={savePf} aria-label="PingFederate">
+          <label className="field">PingFederate base URL (for PF login, optional)
+            <input value={pf.base} onChange={(e) => setPf({ ...pf, base: e.target.value })} maxLength={300} placeholder="https://pingfederate.example.com" spellCheck="false" autoComplete="off" data-testid="card-pf-base" />
+          </label>
+          <label className="field">PingFederate client id (optional)
+            <input value={pf.client} onChange={(e) => setPf({ ...pf, client: e.target.value })} maxLength={120} placeholder={c.clientId} spellCheck="false" autoComplete="off" data-testid="card-pf-client" />
+          </label>
+          <button type="submit" data-testid="card-pf-save" disabled={!pfChanged}>Save PingFederate</button>
+          <small className="hint">The OAuth client on that PingFederate must be public (no secret), allow authorization code + PKCE and redirectless (pi.flow) sign-in. Empty client id: this connection's client id is used. UNVERIFIED: whether the MCP server accepts a PingFederate token.</small>
         </form>
       )}
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}

@@ -42,14 +42,14 @@ test('auth: PingFederate sign-in with no base URL is refused before any state ex
 
 // A stub PingFederate: authorize (opens a native flow), one flow step, token and JWKS endpoints, signing id_tokens with a P-256 key made
 // with createECDH (the repo-scan test explains why the EC key-pair generator is avoided).
-function stubPf({ alg = 'ES256', encoding = 'ieee-p1363', iss = `${PF}/as` } = {}) {
+function stubPf({ alg = 'ES256', encoding = 'ieee-p1363', iss = `${PF}/as`, aud = 'pf-client' } = {}) {
   const ecdh = crypto.createECDH('prime256v1'); ecdh.generateKeys();
   const pub = ecdh.getPublicKey(); const x = pub.subarray(1, 33).toString('base64url'); const y = pub.subarray(33).toString('base64url');
   const key = crypto.createPrivateKey({ key: { kty: 'EC', crv: 'P-256', d: ecdh.getPrivateKey().toString('base64url'), x, y }, format: 'jwk' });
-  const requests = []; const headers = []; let nonce;
+  const requests = []; const headers = []; const tokenBodies = []; const authorizeQueries = []; let nonce;
   const fetchImpl = async (url, init = {}) => {
     requests.push(`${init.method || 'GET'} ${String(url).split('?')[0]}`);
-    if (String(url).startsWith(`${PF}/as/authorization.oauth2?`)) { nonce = new URL(url).searchParams.get('nonce'); return Response.json({ id: 'pfflow-123456', status: 'USERNAME_PASSWORD_REQUIRED' }); }
+    if (String(url).startsWith(`${PF}/as/authorization.oauth2?`)) { authorizeQueries.push(new URL(url).searchParams); nonce = new URL(url).searchParams.get('nonce'); return Response.json({ id: 'pfflow-123456', status: 'USERNAME_PASSWORD_REQUIRED' }); }
     if (String(url) === `${PF}/pf-ws/authn/flows/pfflow-123456`) {
       headers.push({ ...init.headers });
       const body = JSON.parse(init.body);
@@ -58,14 +58,15 @@ function stubPf({ alg = 'ES256', encoding = 'ieee-p1363', iss = `${PF}/as` } = {
     }
     if (String(url) === `${PF}/pf/JWKS`) return Response.json({ keys: [{ kty: 'EC', crv: 'P-256', x, y, kid: 'k1', alg: 'ES256', use: 'sig' }] });
     if (String(url) === `${PF}/as/token.oauth2`) {
-      const claims = { iss, aud: 'pf-client', sub: 'pf-user', exp: Math.floor(Date.now() / 1000) + 600, nonce };
+      tokenBodies.push(new URLSearchParams(String(init.body)));
+      const claims = { iss, aud, sub: 'pf-user', exp: Math.floor(Date.now() / 1000) + 600, nonce };
       const signed = `${Buffer.from(JSON.stringify({ alg, kid: 'k1' })).toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
       const sig = alg === 'none' ? '' : crypto.sign('sha256', Buffer.from(signed), { key, dsaEncoding: encoding }).toString('base64url');
       return Response.json({ access_token: 'pf-at', refresh_token: 'pf-rt', expires_in: 3600, id_token: `${signed}.${sig}` });
     }
     return new Response('nope', { status: 404 });
   };
-  return { fetchImpl, requests, headers };
+  return { fetchImpl, requests, headers, tokenBodies, authorizeQueries };
 }
 
 async function signIn(opts) {
@@ -126,4 +127,50 @@ test('over HTTP: PingFederate sign-in against the mock (its endpoint names, its 
     assert.equal(refused.json.error, 'pf_not_configured');
     assert.ok(!refused.text.includes('pingfederate.'), 'no invented host');
   } finally { await s.close(); }
+});
+
+test('urls: a PingOne-default connection with a PingFederate base also permits the PingFederate host (PF login beside P1 login)', () => {
+  const c = { kind: 'pingone', region: 'com', envId: ENV_ID, endpointStyle: 'api', idp: 'pingone' };
+  assert.deepEqual(liveHosts(c), ['auth.pingone.com', 'api.pingone.com']);
+  assert.deepEqual(liveHosts({ ...c, idpBaseUrl: PF }), ['auth.pingone.com', 'pingfederate.example.com', 'api.pingone.com']);
+});
+
+test('store: a saved live PingOne connection takes a PingFederate base and client id later; empty removes them; a bad base is refused', () => {
+  const store = createStore({ dir: tmpDir() });
+  const live = store.create({ kind: 'pingone', region: 'com', envId: ENV_ID, auth: 'interactive', clientId: 'p1-client' });
+  assert.equal(live.idp, 'pingone'); assert.equal(live.idpBaseUrl, undefined);
+  assert.throws(() => store.update(live.id, { idpBaseUrl: 'http://pingfederate.example.com' }), (e) => e.code === 'bad_request' && /https/.test(e.message));
+  assert.throws(() => store.update(live.id, { idpBaseUrl: 'https://user:pw@pingfederate.example.com' }), (e) => e.code === 'bad_request');
+  assert.throws(() => store.update(live.id, { pfClientId: 'has space' }), (e) => e.code === 'bad_request');
+  let r = store.update(live.id, { idpBaseUrl: ` ${PF} `, pfClientId: 'pf-client' });
+  assert.deepEqual([r.idp, r.idpBaseUrl, r.pfClientId, r.clientId], ['pingone', PF, 'pf-client', 'p1-client']);
+  r = store.update(live.id, { idpBaseUrl: '', pfClientId: '' });
+  assert.equal(r.idpBaseUrl, undefined); assert.equal(r.pfClientId, undefined);
+  const pfDefault = store.create({ kind: 'pingone', region: 'com', envId: ENV_ID, auth: 'interactive', clientId: 'c', idp: 'pf', idpBaseUrl: PF });
+  assert.throws(() => store.update(pfDefault.id, { idpBaseUrl: '' }), (e) => e.code === 'bad_request' && /signs in at PingFederate by default/.test(e.message));
+  const mock = store.create({ kind: 'pingone', offline: true, region: 'com', envId: ENV_ID, auth: 'interactive', clientId: 'm' });
+  assert.equal(store.update(mock.id, { idpBaseUrl: PF }).idpBaseUrl, undefined, 'the offline mock simulates PingFederate and takes no base');
+});
+
+test('auth: PF login on a PingOne-default connection uses the PingFederate client id throughout, and a refresh goes back to PingFederate', async () => {
+  const stub = stubPf({ aud: 'pf-only-client' });
+  let t = Date.now();
+  const a = createAuth({ resolveBase: () => null, fetchImpl: stub.fetchImpl, now: () => t });
+  const c = pfConn({ idp: 'pingone', clientId: 'p1-client', pfClientId: 'pf-only-client' });
+  const s = await a.startLogin(c, { idp: 'pf' });
+  assert.equal((await a.loginStep(c, { loginId: s.loginId, action: 'password', username: 'pf.user', password: 'right' })).step, 'done');
+  assert.equal(stub.authorizeQueries[0].get('client_id'), 'pf-only-client');
+  assert.equal(stub.authorizeQueries[0].get('resource'), null, 'no RFC 8707 resource is sent to PingFederate');
+  assert.deepEqual([stub.tokenBodies[0].get('grant_type'), stub.tokenBodies[0].get('client_id')], ['authorization_code', 'pf-only-client']);
+  t += 3_600_000; // past expiry: the next token use refreshes
+  assert.equal(await a.accessToken(c), 'pf-at');
+  assert.deepEqual([stub.tokenBodies[1].get('grant_type'), stub.tokenBodies[1].get('client_id'), stub.tokenBodies[1].get('resource')], ['refresh_token', 'pf-only-client', null]);
+  assert.ok(stub.requests.every((r) => r.includes(PF)), 'every call went to PingFederate, none to PingOne');
+});
+
+test('auth: a PingFederate issuer that is its plain base URL (no /as) is accepted; another host still is not', async () => {
+  const plain = await signIn({ iss: PF });
+  assert.equal(plain.error, undefined); assert.equal(plain.value.step, 'done');
+  const foreign = await signIn({ iss: 'https://evil.example' });
+  assert.equal(foreign.error.code, 'iss_mismatch');
 });
