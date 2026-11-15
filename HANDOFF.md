@@ -1,6 +1,6 @@
 # MFA Admin MCP LAB — Handoff
 
-**Date:** 2026-11-14 · **Owner:** curtismu7 · **Status: WORKING — 17 PRs merged 2026-11-13→14 (see "Recent work"); sign-in wiring live-proven, final getMfaSettings call owner-run.**
+**Date:** 2026-11-15 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the real password + SMS sign-in and the getMfaSettings call are owner-run and not yet done.**
 
 ---
 
@@ -25,6 +25,20 @@ The first real sign-in failed at the token exchange (`invalid_client: Unsupporte
 - Setup creates its own public **native** app `MFA Admin MCP LAB sign-in` (done in the owner's environment 2026-11-15; PingOne refuses parentheses in an app name and `+` in a description). The saved connection **PingOne hosted MCP (pi.flow)** uses it; the older **PingOne hosted MCP (set up)** card points at the confidential admin app and cannot sign in: delete it.
 - Measured on the real tenant with no credentials: the flow opens (`USERNAME_PASSWORD_REQUIRED`) and needs no worker Bearer token. **Still owner-run:** the real password + SMS code, the code redemption, and whether the hosted MCP accepts the token. See `docs/live-checks.md` ("Result of the pi.flow switch").
 - Mock sign-in: `mock.admin` / `mock-password` / code `123456` (pre-filled); `mock.nomfa` skips the code; `mock.multi` asks which device.
+
+## 2026-11-15 (later): what changed after pi.flow, and what is left
+
+Merged on `main` (lab PR numbers), all in the running container and pinned in `AI-DEMO-Standalone` (PR 251, pin 28b6647):
+
+- **#30** pi.flow sign-in (above).
+- **#36** A PingOne connection is a **user sign-in only**: the hosted PingOne MCP server takes an administrator's own sign-in, not a worker (`client_credentials`) token. Creating one with `auth: "worker"` or a client secret is refused (400); a worker connection saved by an older build is listed without its secret and refused on every call (409 `worker_unsupported`). The sign-in sends `resource=<MCP URL>` (RFC 8707). New connections default to the documented `mcp.pingone.<region>/admin/<envId>/mcp` shape (`api` stays selectable). In Mock the role comes from the account: `mock.viewer` sees 18 read tools, `mock.admin` all 33. Setup's Management worker stays and is used only for Management API calls, never the MCP.
+- **#34** The Audit page shows tool arguments **exactly as sent**: no redaction by argument name (owner, 2026-11-15). Only this lab's own stored credentials are masked if one appears as a value. `audit.jsonl` (mode 600) can therefore hold whatever a call carried, including a secret typed into an argument. Caps: 50 keys, depth 6, strings 2000 characters.
+- **#35** Optional **login hint** per connection: set on the Add connection form or on the connection card (**Save hint**; an empty value clears it). It is sent as `login_hint` on the authorize request and pre-fills the dialog's username. PingOne treats it as advisory (measured: 200, normal password step); PingFederate binds the sign-in to it.
+- **#37** A finished sign-in makes that connection the one in use, and Tools names the connection in use.
+
+Running container image `…:latest` = `…:login-hint` (built from `main`; its `server/src` matches `main` byte for byte). Rollback tags: `:pre-login-hint`, `:user-login`, `:pi-flow`.
+
+**Still open (owner-run, nobody else can do it):** sign in on **PingOne hosted MCP (pi.flow)** (Mock → Real → **P1 login** → username, password, SMS code → **Test connection** → Tools → getMfaSettings). Unproven until then: the real password and SMS steps, the code redemption, whether the hosted MCP accepts a token from this lab's own native app, and the PingFederate native flow against a real PF. Save your username as the hint on the card first if you want it pre-filled.
 
 ## Recent work (2026-11-13→14, 17 PRs, all CI green)
 
@@ -116,8 +130,8 @@ README, "Install with one command".
 - The app serves `web/dist` at `/` with relative asset URLs (`base: "./"`), so the same build
   also works under the lab-proxy's `/mfa-admin-mcp/` prefix; Vite dev mode runs on 5202 with
   `/api` proxied to 7815.
-- Connections model: each connection = MCP server URL + auth (worker token, interactive
-  pi.flow sign-in with PKCE, or custom credential) + writes-allowed flag. The confirm gate refuses
+- Connections model: each connection = MCP server URL + auth (a PingOne user sign-in through
+  pi.flow with PKCE, or a custom header credential) + writes-allowed flag. The confirm gate refuses
   write/destructive tool calls unless the in-use connection allows writes.
 - PingOne hosted MCP endpoint shapes are UNVERIFIED — see `docs/live-checks.md` in the repo;
   two shapes exist (`api.pingone.{region}/v1/environments/{envId}/mcp` vs
