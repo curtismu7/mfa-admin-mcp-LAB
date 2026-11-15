@@ -26,7 +26,7 @@ export default function Tools({ conn, tools, loading, error, test, testBusy, now
     <>
       <h1>Tools</h1>
       {needsSignIn && (
-        <p className="notice" data-state="bad" data-testid="tools-signin">This connection is not signed in yet, so no tools from the server are listed. Open <a href="#/connections">Connections</a> and press <strong>Sign in</strong> (PingOne will ask for your MFA code), then come back here.</p>
+        <p className="notice" data-state="bad" data-testid="tools-signin">The connection in use, <strong>{conn.label}</strong>, is not signed in yet, so no tools from the server are listed.{conns?.length > 1 && <> Pick a signed-in connection under <strong>Show tools from</strong> below, or</>} {conns?.length > 1 ? "open" : "Open"} <a href="#/connections">Connections</a> and press <strong>P1 login</strong> on this one (PingOne will ask for your MFA code).</p>
       )}
       <HealthCard conn={conn} test={test} busy={testBusy} now={now} />
       {conns?.length > 1 && (

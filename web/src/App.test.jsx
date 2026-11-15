@@ -575,6 +575,27 @@ test("P1 login opens a dialog (no redirect): password, then the one-time code, t
   expect(api.calls.every((c) => c.url.startsWith("/api/"))).toBe(true); // the page only ever talked to this app's own server
 });
 
+test("signing in on a connection that is not in use makes it the one in use, so the Tools page uses the signed-in connection", async () => {
+  fakeApi({ conns: [
+    conn({ id: "c0", label: "Other PingOne", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } }),
+    conn({ id: "c1", label: "Signed PingOne", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } }),
+  ], handlers: {
+    "POST /api/connections/:id/login/start": (_b, _s, json) => json(200, { ok: true, loginId: "login-1", step: "otp", devices: [{ id: "d1", type: "SMS", target: "+1 *** 0142" }], selectedDeviceId: "d1" }),
+    "POST /api/connections/:id/login/step": (_b, st, json) => { st.conns[1].auth_status = { signedIn: true, as: "admin-user", expiresAt: Date.now() + 3_600_000 }; return json(200, { ok: true, step: "done", as: "admin-user" }); },
+  } });
+  const user = userEvent.setup();
+  render(<App />);
+  const cards = await screen.findAllByTestId("conn-card");
+  expect(within(cards[0]).getByRole("button", { name: "In use" })).toBeInTheDocument();
+  await user.click(within(cards[1]).getByRole("button", { name: "P1 login" }));
+  const dlg = await screen.findByTestId("login-dialog");
+  await user.type(within(dlg).getByTestId("login-otp"), "123456");
+  await user.click(within(dlg).getByTestId("login-submit"));
+  await waitFor(() => expect(screen.queryByTestId("login-dialog")).toBeNull());
+  await waitFor(() => expect(within(screen.getAllByTestId("conn-card")[1]).getByRole("button", { name: "In use" })).toBeInTheDocument());
+  expect(within(screen.getAllByTestId("conn-card")[0]).getByRole("button", { name: "Use this connection" })).toBeInTheDocument();
+});
+
 test("sign-in with two devices asks which one; a step the lab cannot show ends the sign-in with the reason and offers no redirect", async () => {
   const devices = [{ id: "d-sms", type: "SMS", target: "+1 *** 0142" }, { id: "d-mail", type: "EMAIL", target: "a@example.invalid" }];
   const { steps } = signInApi({ step: (b, st, json) => (b.action === "password" ? json(200, { ok: true, step: "device", devices })
