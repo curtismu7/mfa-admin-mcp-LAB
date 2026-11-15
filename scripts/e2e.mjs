@@ -45,11 +45,11 @@ fs.mkdirSync(shots, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM || undefined });
 let page = null;
+const external = []; const bodies = []; const errors = [];
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
   page = await ctx.newPage();
   const shot = (name) => page.screenshot({ path: path.join(shots, `${name}.png`), fullPage: true });
-  const external = []; const bodies = []; const errors = [];
   page.on('request', (r) => { const u = new URL(r.url()); if (!/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
   page.on('response', async (r) => { try { if (r.url().includes('/api/')) bodies.push(await r.text()); } catch { /* redirect or gone */ } });
   // The gate's own answers (401 interactive not signed in, 403 writes off / method refused, 409 confirm needed) log a browser console line by design.
@@ -255,15 +255,19 @@ try {
   check(await page.evaluate(() => document.documentElement.dataset.present) === '1', 'presenter mode turns on');
   await page.keyboard.press('Escape');
 
-  // interactive login against the stub AS, browser follows the redirect and back
+  // interactive login through the pi.flow modal (no redirect; the dialog drives the flow)
   await page.getByRole('link', { name: 'Connections' }).click();
   await page.getByRole('button', { name: /Add mock demo with sign-in/ }).click();
   await page.getByRole('button', { name: 'P1 login' }).waitFor();
   await page.getByRole('button', { name: 'P1 login' }).click();
-  await page.waitForURL(/login=|#/, { timeout: 8000 }).catch(() => {});
+  const signInDlg = page.getByTestId('piflow-signin');
+  await signInDlg.waitFor({ timeout: 8000 });
+  check((await signInDlg.getByTestId('piflow-username').inputValue()) === 'mock-admin', 'the pi.flow dialog prefills the mock username');
+  await signInDlg.getByTestId('piflow-password').fill('mock-password');
+  await signInDlg.getByTestId('piflow-submit').click();
   await page.getByTestId('tool-count').waitFor({ timeout: 8000 });
-  check((await page.getByTestId('identity').innerText()).includes('signed in as mock-admin-user'), 'interactive: back from the stub AS, signed in as <sub>');
-  check(!page.url().includes('code=') && !page.url().includes('login='), 'the callback query is cleaned from the address bar');
+  check((await page.getByTestId('identity').innerText()).includes('signed in as mock-admin-user'), 'interactive: pi.flow sign-in through the dialog, signed in as <sub>');
+  check(!page.url().includes('code=') && !page.url().includes('login='), 'no callback query ever touched the address bar');
   check((await page.locator('[data-testid="conn-card"]').last().innerText()).includes('Sign out'), 'a Sign out button replaces Sign in');
   await shot('12-interactive');
   await page.getByRole('button', { name: /^Sign out/ }).click();
