@@ -357,6 +357,24 @@ test("raw console: a free method runs; tools/call goes through the confirm gate"
   await waitFor(() => expect(api.calls.filter((c) => c.url.endsWith("/rpc")).at(-1).body).toMatchObject({ method: "tools/call", confirm: true, argsHash: "rh" }));
 });
 
+test("raw console: every method shows a sample in Params; resources/read and prompts/get are filled from the server's lists", async () => {
+  fakeApi({ conns: [conn()], handlers: { "POST /api/connections/:id/rpc": (b, _s, json) => json(200, { result: b.method === "prompts/list" ? { prompts: [{ name: "summarize", arguments: [{ name: "topic", required: true }, { name: "tone" }] }] } : b.method === "resources/list" ? { resources: [] } : {} }) } });
+  go("#/raw");
+  render(<App />);
+  const params = await screen.findByLabelText(/Params/);
+  const pick = (m) => fireEvent.change(screen.getByLabelText(/^Method/), { target: { value: m } });
+  expect(params).toHaveValue("{}");
+  expect(screen.getByTestId("raw-note")).toHaveTextContent(/tools\/list takes no required params.*cursor/);
+  pick("initialize");
+  expect(JSON.parse(params.value)).toMatchObject({ protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mfa-admin-mcp" } });
+  pick("prompts/get");
+  await waitFor(() => expect(JSON.parse(params.value)).toEqual({ name: "summarize", arguments: { topic: "" } }));
+  expect(screen.getByTestId("raw-note")).toHaveTextContent(/first prompt the server listed \(1 prompts\).*required arguments/);
+  pick("resources/read");
+  await waitFor(() => expect(JSON.parse(params.value)).toEqual({ uri: "file:///example.txt" }));
+  expect(screen.getByTestId("raw-note")).toHaveTextContent(/lists no resources.*shape only/);
+});
+
 test("MCP-first card says its source and that it is UNVERIFIED, and names the fallbacks", async () => {
   fakeApi();
   go("#/mcp-first");
