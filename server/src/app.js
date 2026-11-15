@@ -318,7 +318,9 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     const hostPort = browserPort(req);
     const schemeOk = u && ((u.protocol === 'http:' && isLoopbackHost(u.hostname)) || u.protocol === 'https:');
     if (!u || !schemeOk || !CALLBACK_PATHS.has(u.pathname) || u.port !== hostPort || u.search || u.hash) {
-      return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be http://localhost:${hostPort}/api/oauth/callback (or /callback), exactly as registered on your OAuth application.` });
+      let want = `http://localhost:${hostPort}`; // behind the lab-proxy the callback is the proxy's https name, not localhost
+      try { const o = new URL(browserOrigin(req, lab)); if (!isLoopbackHost(o.hostname)) want = o.origin; } catch { /* keep the loopback form */ }
+      return res.status(400).json({ error: 'redirect_uri_invalid', message: `redirectUri must be ${want}/api/oauth/callback (or /callback), exactly as registered on your OAuth application. This connection has ${conn.redirectUri || 'none'}: delete it and add it again from this page.` });
     }
     const started = auth.startLogin(conn, { idp: req.body?.idp, returnTo: safeReturnTo(req.body?.returnTo) });
     const mb = browserMockBase(conn);

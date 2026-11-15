@@ -40,4 +40,8 @@ test("countdown and redirect URI", () => {
   expect(countdown(1000 + 125_000, 1000)).toBe("2m 05s");
   expect(countdown(1000, 5000)).toBe("expired");
   expect(redirectUriFor({ port: "7815" })).toBe("http://localhost:7815/api/oauth/callback");
+  expect(redirectUriFor({ protocol: "http:", hostname: "127.0.0.1", host: "127.0.0.1:7815", port: "7815" })).toBe("http://localhost:7815/api/oauth/callback"); // loopback keeps the localhost form PingOne apps register
+});
+test("redirect URI behind the lab-proxy is the browser's own https origin, which is the only callback the server accepts there", () => {
+  expect(redirectUriFor({ protocol: "https:", hostname: "proxy.example", host: "proxy.example:8443", port: "8443" })).toBe("https://proxy.example:8443/api/oauth/callback");
 });

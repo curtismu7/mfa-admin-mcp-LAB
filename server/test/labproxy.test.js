@@ -104,6 +104,24 @@ test('browserOrigin believes X-Forwarded-* only for a LAB_ALLOWED_HOSTS Host; sa
   for (const bad of [undefined, '', 'mfa', '//evil.example', 'https://evil.example', '/\\evil', '/a/../b', '/./a', '/a?x', '/a#x', '/a b', '/%2e%2e/', `/${'a'.repeat(300)}`, 5, {}]) assert.equal(safeReturnTo(bad), '/', String(bad));
 });
 
+test('behind the lab-proxy: a connection saved with a localhost redirect URI is refused with the proxy\'s https callback named, and the right one signs in', async () => {
+  const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
+  try {
+    const host = `${PROXY_HOST}:7815`;
+    const start = (id) => call(s.port, 'POST', `/api/connections/${id}/login/start`, { host, headers: { ...FWD, origin: PROXY_ORIGIN }, body: { returnTo: '/mfa-admin-mcp/' } });
+    const stale = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, redirectUri: 'http://localhost:7815/api/oauth/callback' })).json;
+    const refused = await start(stale.id);
+    assert.equal(refused.status, 400);
+    const { error, message } = JSON.parse(refused.body);
+    assert.equal(error, 'redirect_uri_invalid');
+    assert.ok(message.includes(`${PROXY_ORIGIN}/api/oauth/callback`), message);
+    assert.ok(message.includes('http://localhost:7815/api/oauth/callback'), 'says what the connection has now');
+    assert.ok(!message.includes('http://localhost:8443'), 'no longer sends people to a localhost callback the browser cannot reach');
+    const good = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, redirectUri: `${PROXY_ORIGIN}/api/oauth/callback` })).json;
+    assert.equal((await start(good.id)).status, 200);
+  } finally { await s.close(); }
+});
+
 test('behind the lab-proxy: the OAuth callback is judged by the browser\'s URL and returns to the page the sign-in started from', async () => {
   const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
   try {

@@ -443,6 +443,17 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
   expect(within(pf).queryByTestId("pf-hint")).toBeNull();
 });
 
+test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
+  const message = "redirectUri must be https://proxy.example:8443/api/oauth/callback (or /callback), exactly as registered.";
+  fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })],
+    handlers: { "POST /api/connections/:id/login/start": (_b, _s, json) => json(400, { error: "redirect_uri_invalid", message }) } });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "P1 login" }));
+  expect(await screen.findByTestId("login-err")).toHaveTextContent(message);
+  expect(within(screen.getByTestId("conn-card")).getByTestId("login-err")).toBeInTheDocument(); // in the card, not the visually-hidden live region
+});
+
 test("the Test connection dialog lists the actual tools grouped by safety class, with the totals", async () => {
   const tools = [
     { name: "listUsers", class: "read", classSource: "name" },

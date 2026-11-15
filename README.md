@@ -127,7 +127,7 @@ On Node 26, with the counts from the last run in this repo: 84 server tests (nod
 - **Pressing Live shows a refusal message.** That is the designed behaviour when a guard fails (a non-loopback bind on a host run, without the container opt-in): the page stays in Mock and no request is sent.
 - **A Live connection answers 403 `live_refused`.** Same cause. It was saved while Live was allowed; set the key again, or delete the connection.
 - **The browser console shows 4xx lines after you press Test, Call or Sign in.** The gate's deliberate refusals (writes off, confirm needed, not signed in) are real HTTP 4xx answers, and the browser logs them. They are not errors. See "Safety notes" for the list.
-- **Sign-in says the redirect URI is invalid.** It must be `http://localhost:<the port you open the page on>/api/oauth/callback`, exactly as registered on your OAuth application (Live only; UNVERIFIED against PingOne).
+- **Sign-in says the redirect URI is invalid.** It must be `http://localhost:<the port you open the page on>/api/oauth/callback`, exactly as registered on your OAuth application (Live only; UNVERIFIED against PingOne). Behind the family proxy it is the proxy's own URL instead (`https://<proxy host>:<proxy port>/api/oauth/callback`). A connection saved on another origin keeps its old redirect URI: delete it and add it again from the page you sign in on.
 
 ## Ownership
 

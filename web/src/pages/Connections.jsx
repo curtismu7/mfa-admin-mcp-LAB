@@ -113,9 +113,11 @@ const PF_NEEDS = "PF login needs a PingFederate base URL: add a connection with 
 function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
   async function act(fn, msg) { const r = await fn(); if (!r.ok) say(r.json?.message || "That did not work."); else if (msg) say(msg); onChange(); return r; }
+  const [loginErr, setLoginErr] = useState("");
   async function signIn(idp) {
+    setLoginErr("");
     const r = await api.post(`/api/connections/${c.id}/login/start`, { idp, returnTo: window.location.pathname }); // returnTo: the callback returns here, not to "/" (the proxy sends that to the shelf)
-    if (!r.ok) { say(r.json?.message || "Could not start sign-in."); return; }
+    if (!r.ok) { const m = r.json?.message || "Could not start sign-in."; say(m); setLoginErr(m); return; } // say() is a visually-hidden live region: show the reason beside the buttons too
     say(idp === "pf" ? "Sending your browser to your PingFederate instance…" : "Sending your browser to PingOne's authorization server…");
     window.location.assign(r.json.authorizeUrl);
   }
@@ -149,6 +151,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         )}
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
       </div>
+      {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}
       <label className={`writes${c.allowWrites ? " writes--on" : ""}`}>
         <input type="checkbox" checked={c.allowWrites} onChange={(e) => setWrites(e.target.checked)} />
         Allow writes for this connection {c.allowWrites ? "(ON: write and destructive calls can run after confirmation)" : "(off: read tools only)"}
