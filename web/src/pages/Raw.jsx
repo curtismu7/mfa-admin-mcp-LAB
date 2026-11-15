@@ -11,6 +11,7 @@ export default function Raw({ conn }) {
   const [params, setParams] = useState("{}");
   const [err, setErr] = useState("");
   const [fillNote, setFillNote] = useState("");
+  const [rec, setRec] = useState({ busy: false, note: "" });
   const g = useGatedCall();
   if (!conn) return <><h1>Raw JSON-RPC</h1><p>Select a connection first.</p></>;
   const gated = method === "tools/call";
@@ -46,7 +47,18 @@ export default function Raw({ conn }) {
         {err && <p className="err-text" role="alert">{err}</p>}
         <button type="button" className="primary" onClick={send} disabled={g.busy}>{g.busy ? "Sending…" : "Send"}</button>
       </section>
-      <CallView response={g.response} />
+      <CallView response={g.response} record={{
+        can: gated && conn && !conn.offline,
+        busy: rec.busy,
+        note: rec.note,
+        onRecord: async (j) => {
+          setRec({ busy: true, note: "" });
+          const name = (() => { try { return JSON.parse(params)?.name; } catch { return null; } })();
+          const r = await api.post("/api/fixtures", { tool: name, result: j.result, connectionId: conn.id });
+          setRec({ busy: false, note: r.ok ? `Recorded: the mock demo now replays this real response for ${name}.` : r.json?.message || "Could not record." });
+          if (!r.ok) throw new Error(r.json?.message || "Could not record.");
+        },
+      }} />
       {g.gate && <ConfirmDialog tool={g.gate.request.params?.name} gate={g.gate} busy={g.busy} onConfirm={g.confirm} onCancel={g.cancel} />}
     </>
   );

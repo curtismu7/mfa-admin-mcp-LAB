@@ -8,6 +8,7 @@ import { analyze, LIMITS, RULES } from './scanner/index.js';
 import { MODES, MODE_KEY, dataDir as cfgDataDir, liveRefusal, modeFrom, webDist } from './config.js';
 import { createDiagrams, DIAGRAM_DIR } from './diagrams.js';
 import { createAudit, decide, argsHash } from './gate.js';
+import { createFixtures } from './fixtures.js';
 import { createHealth } from './health.js';
 import { createMcpClient } from './mcpClient.js';
 import { createMock } from './mock.js';
@@ -30,6 +31,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   const dir = cfgDataDir(env);
   store ||= createStore({ dir });
   const audit = createAudit({ dir });
+  const fixtures = createFixtures({ dir });
   const theMock = mock || createMock();
   let mockStarted = Boolean(mock?.base);
   const ensureMock = async () => { if (!mockStarted) { await theMock.start(); mockStarted = true; } };
@@ -238,7 +240,10 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     const secrets = secretsFor(conn);
     const a = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     if (typeof tool !== 'string' || !tool) return { status: 400, body: { error: 'bad_request', message: 'tool is required' } };
-    const entry = (await listAnnotated(conn)).find((t) => t.name === tool);
+    let entry = (await listAnnotated(conn)).find((t) => t.name === tool);
+    // A recorded fixture makes a tool from the recording server callable on the mock demo too: it
+    // replays a read-only snapshot, so it is treated as a read (writes still go through the gate).
+    if (!entry && conn?.offline && fixtures.get(tool)) entry = { name: tool, class: 'read', classSource: 'recorded fixture', description: `Replays a response recorded from a real server on ${String(fixtures.get(tool).recordedAt || '').slice(0, 10)}.`, inputSchema: { type: 'object', properties: {} } };
     if (!entry) { audit.record({ conn, tool, outcome: 'blocked:tool_not_listed', args: a }, secrets); return { status: 404, body: { error: 'tool_not_listed', message: 'this identity does not see that tool (the list is gated by role)' } }; }
     const verdict = decide({ cls: entry.class, allowWrites: conn.allowWrites, connId: conn.id, tool, args: a, confirm, hash, typedName });
     const warnings = validateArgs(entry.inputSchema, a);
@@ -343,6 +348,30 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   app.post('/api/connections/:id/logout', h((_req, res, conn) => { auth.logout(conn); res.json({ ok: true }); }, { noNetwork: true }));
 
   app.get('/api/audit', (_req, res) => res.json({ entries: audit.recent() }));
+
+  // ---- recorded fixtures: real tool responses captured from a Live server, replayed by the mock
+  app.get('/api/fixtures', (_req, res) => res.json({ count: fixtures.count(), fixtures: fixtures.all() }));
+  // Record takes the tool + result the UI just received. The connection is named in the body (this
+  // route has no :id); it is only used for the label and the secret scrubbing, never for a call.
+  app.post('/api/fixtures', h(async (req, res) => {
+    const { tool, result, connectionId } = req.body || {};
+    if (typeof tool !== 'string' || !tool) return res.status(400).json({ error: 'bad_request', message: 'tool is required' });
+    if (!result || typeof result !== 'object') return res.status(400).json({ error: 'bad_request', message: 'result (the JSON-RPC result envelope) is required' });
+    const conn = connectionId ? store.get(connectionId) : null;
+    const secrets = secretsFor(conn || { label: '', url: '', clientSecret: '', token: '' }).concat([conn?.clientSecret, conn?.token].filter(Boolean));
+    try {
+      const saved = fixtures.record(tool, result, { source: `recorded from ${scrub(conn?.label || 'a live server', secrets)} (${conn?.kind || 'live'}), ${new Date().toISOString().slice(0, 10)}`, secrets });
+      theMock.setFixtures?.(fixtures.all());
+      if (conn) audit.record({ conn, tool, outcome: 'fixture_recorded' }, secrets);
+      res.status(201).json({ ok: true, tool, recordedAt: saved.recordedAt, source: saved.source });
+    } catch (err) { res.status(400).json({ error: 'bad_request', message: scrub(String(err.message || 'could not record'), secrets) }); }
+  }));
+  app.delete('/api/fixtures/:tool', h(async (req, res, conn) => {
+    const gone = fixtures.remove(req.params.tool);
+    theMock.setFixtures?.(fixtures.all());
+    if (gone && conn) audit.record({ conn, tool: req.params.tool, outcome: 'fixture_deleted' }, secretsFor(conn));
+    res.json({ ok: gone });
+  }));
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
 
   // The mock's own port lives inside the container, so a browser cannot reach the authorize URL directly.
@@ -368,7 +397,10 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     return res.status(500).json({ error: 'internal_error', message: 'internal error' });
   });
 
-  app.locals.store = store; app.locals.auth = auth; app.locals.audit = audit; app.locals.mock = theMock;
+  // Recorded fixtures replay real responses inside the mock; load what is on disk now and keep the mock in step.
+  theMock.setFixtures?.(fixtures.all());
+
+  app.locals.store = store; app.locals.auth = auth; app.locals.audit = audit; app.locals.mock = theMock; app.locals.fixtures = fixtures;
   app.locals.close = async () => { health.stop(); if (!mock && mockStarted) await theMock.stop(); };
   return app;
 }
