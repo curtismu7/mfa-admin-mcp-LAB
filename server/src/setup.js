@@ -119,19 +119,19 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
     // Find our app by name:
     let apps;
     try { apps = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications?limit=100`, { headers: H, signal: AbortSignal.timeout(10_000) }))); } catch { apps = { status: 0, b: null }; }
-    if (apps.status !== 200) return res.status(502).json({ error: 'api_error', message: `Listing applications failed (${apps.status}). The worker may lack a role that can read applications.` });
+    if (apps.status !== 200) return res.status(424).json({ error: 'api_error', message: `Listing applications failed (${apps.status}). The worker may lack a role that can read applications.` });
     let app = (apps.b?._embedded?.applications || []).find((a) => a.name === APP_NAME);
     let created = false;
     if (!app) {
       const body = { name: APP_NAME, description: 'Interactive sign-in for the MFA Admin MCP LAB (PingOne native flow, pi.flow, authorization code with PKCE; roles ride on the signed-in user).', enabled: true, type: 'NATIVE_APP', protocol: 'OPENID_CONNECT', grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'], responseTypes: ['CODE'], tokenEndpointAuthMethod: 'NONE', pkceEnforcement: 'S256_REQUIRED', redirectUris: [PI_FLOW_REDIRECT_URI] };
       const r = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications`, { method: 'POST', headers: H, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) }).catch(() => ({ status: 0, b: null }))));
-      if (r.status !== 201) return res.status(502).json({ error: 'api_error', message: `Creating the sign-in application failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
+      if (r.status !== 201) return res.status(424).json({ error: 'api_error', message: `Creating the sign-in application failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
       app = r.b; created = true;
     } else if (!(app.redirectUris || []).map(bare).includes(PI_FLOW_REDIRECT_URI)) {
       // Register the redirect URI on the existing app: GET, merge, full PUT of the writable subset.
       const uris = (app.redirectUris || []).map(bare).concat(PI_FLOW_REDIRECT_URI);
       const r = await withPermit(`api.pingone.${region}`, async () => j(await fetchImpl(`${api}/applications/${app.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ ...writable(app), redirectUris: uris }), signal: AbortSignal.timeout(10_000) }).catch(() => ({ status: 0, b: null }))));
-      if (r.status !== 200) return res.status(502).json({ error: 'api_error', message: `Adding the redirect URI to "${app.name}" failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
+      if (r.status !== 200) return res.status(424).json({ error: 'api_error', message: `Adding the redirect URI to "${app.name}" failed (${r.status}): ${r.b?.details?.map((d) => d.message).join('; ') || r.b?.message || 'unknown'}.` });
       app = r.b;
     }
     return res.json({

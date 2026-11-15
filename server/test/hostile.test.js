@@ -59,7 +59,7 @@ test('a token endpoint error echoing the authorization code and the PKCE verifie
   await step({ action: 'password', username: start.mockLogin.username, password: start.mockLogin.password });
   const r = await step({ action: 'otp', otp: start.mockLogin.otp }); // the code is redeemed here, at the hostile token endpoint
   mode.token = 'ok';
-  assert.equal(r.status, 502, r.text); assert.equal(r.json.error, 'token_request_failed');
+  assert.equal(r.status, 424, r.text); assert.equal(r.json.error, 'token_request_failed');
   assert.match(r.text, /rejected code \[redacted\] verifier \[redacted\]/, 'both values were replaced');
   assert.equal((await s.call('GET', `/api/connections/${c.id}/tools`)).json.error, 'login_required', 'nobody is signed in');
 });
@@ -67,6 +67,7 @@ test('MCP error bodies echoing the bearer and the refresh token are scrubbed on 
   mode.token = 'ok'; const c = await add(); await writes(c.id);
   mode.mcp = 'list500';
   const t = await s.call('GET', `/api/connections/${c.id}/tools`); const h = await s.call('POST', `/api/connections/${c.id}/test`);
+  assert.equal(t.status, 424, 'an upstream failure answers 424, which the lab proxy passes through with its reason (it replaces 502/503/504)');
   assert.equal(h.json.ok, false);
   noLeak('list500', t.text, h.text);
   assert.match(h.text, /\[redacted\]/, 'the /test handler scrubbed the echo');
