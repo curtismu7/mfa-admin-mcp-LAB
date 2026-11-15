@@ -182,8 +182,9 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   };
   // Is each preset's server answering? Any HTTP answer (even 401 or 405) means it is up; a refused or timed-out connection means it is not.
   // Live only: in Mock (or with Live refused) the lab sends nothing, so running is null.
+  // In the container the URL is dialled as host.docker.internal, which the netguard allows only under a permit, as for a saved connection.
   async function probe(url) {
-    try { await fetchImpl(dialUrl(url), { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(2000) }); return true; } catch { return false; }
+    try { await withPermits({ kind: 'custom', url }, () => fetchImpl(dialUrl(url), { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(2000) })); return true; } catch { return false; }
   }
   app.get('/api/presets', async (_req, res) => {
     const presets = await Promise.all(Object.keys(PRESETS).map(async (id) => {
