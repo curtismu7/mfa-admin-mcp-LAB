@@ -156,9 +156,18 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     catch (err) { res.status(400).json({ error: 'bad_request', message: scrub(err.message, [req.body?.clientSecret, req.body?.token]) }); }
   });
   // One-click presets for local custom MCP servers. There is no PingOne preset: a PingOne connection needs a user sign-in (Setup makes one).
+  const presetUrl = {
+    banking: () => env.MFAADM_BANKING_URL || 'http://localhost:8081/mcp',
+    opensearch: () => env.MFAADM_OPENSEARCH_URL || 'http://localhost:9900/mcp',
+  };
+  // How to start each server when it is not running. The lab cannot start them itself: it runs in its own container with no access to Docker.
+  const PRESET_START = {
+    banking: { name: 'Banking MCP', folder: 'mcp-resource-server-LAB', command: 'docker compose up -d' },
+    opensearch: { name: 'OpenSearch MCP', folder: 'AI-DEMO2', command: 'docker compose --profile mcpgw up -d opensearch-mcp-server' },
+  };
   const PRESETS = {
     banking: () => {
-      const url = env.MFAADM_BANKING_URL || 'http://localhost:8081/mcp';
+      const url = presetUrl.banking();
       // The family banking MCP (mcp-resource-server-LAB) is bearer-token only. With no JWKS source
       // configured it accepts a well-formed local test token (STRICT_AUTH=false default), so the
       // preset mints one itself: aud = its resource, scope = banking:read. A real deployment sets
@@ -167,8 +176,20 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
       const token = env.MFAADM_BANKING_TOKEN || `${h({ alg: 'none', typ: 'JWT' })}.${h({ iss: 'mfa-admin-mcp-lab-preset', aud: env.MFAADM_BANKING_AUD || 'mcp-invest.ping.demo', scope: 'banking:read', sub: 'lab-preset', exp: Math.floor(Date.now() / 1000) + 86400 })}.`;
       return { kind: 'custom', label: 'Banking MCP (local)', url, token, authHeader: 'Authorization' };
     },
-    opensearch: () => ({ kind: 'custom', label: 'OpenSearch MCP (local)', url: env.MFAADM_OPENSEARCH_URL || 'http://localhost:9900/mcp' }),
+    opensearch: () => ({ kind: 'custom', label: 'OpenSearch MCP (local)', url: presetUrl.opensearch() }),
   };
+  // Is each preset's server answering? Any HTTP answer (even 401 or 405) means it is up; a refused or timed-out connection means it is not.
+  // Live only: in Mock (or with Live refused) the lab sends nothing, so running is null.
+  async function probe(url) {
+    try { await fetchImpl(dialUrl(url), { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(2000) }); return true; } catch { return false; }
+  }
+  app.get('/api/presets', async (_req, res) => {
+    const presets = await Promise.all(Object.keys(PRESETS).map(async (id) => {
+      const url = presetUrl[id]();
+      return { id, ...PRESET_START[id], url, running: liveGate || runMode !== 'live' ? null : await probe(url) };
+    }));
+    res.json({ presets });
+  });
   app.post('/api/presets/:id', (req, res) => {
     const make = Object.hasOwn(PRESETS, req.params.id) ? PRESETS[req.params.id] : null;
     if (!make) return res.status(404).json({ error: 'unknown_preset', message: 'No such preset.' });

@@ -23,7 +23,11 @@ export const conn = (o = {}) => ({ id: "c1", kind: "pingone", label: "Mock demo"
 // A tiny fake of this app's API. `calls` records every request; handlers can be overridden per test.
 export const LIVE_OK = { available: true, failed: [], needs: [] };
 export const LIVE_REFUSED = { available: false, failed: ["loopback-bind"], needs: ["the server must be bound to loopback"] };
-export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK, defaults = { envId: null, region: null } } = {}) {
+export const PRESETS = [
+  { id: "banking", name: "Banking MCP", folder: "mcp-resource-server-LAB", command: "docker compose up -d", url: "http://localhost:8081/mcp", running: true },
+  { id: "opensearch", name: "OpenSearch MCP", folder: "AI-DEMO2", command: "docker compose --profile mcpgw up -d opensearch-mcp-server", url: "http://localhost:9900/mcp", running: false },
+];
+export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK, defaults = { envId: null, region: null }, presets = PRESETS } = {}) {
   const state = { conns: structuredClone(conns), calls: [], audit };
   const json = (status, body) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
   let serverMode = "mock";
@@ -39,6 +43,7 @@ export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers 
         serverMode = body.source; return json(200, { source: serverMode, realAvailable: live.available, realReason: null });
       case "POST /api/reset": return json(200, { ok: true, cleared: ["audit"], kept: ["connections"] });
       case "GET /api/setup/defaults": return json(200, defaults);
+      case "GET /api/presets": return json(200, { presets });
       case "GET /api/connections": return json(200, { connections: state.conns });
       case "POST /api/connections": { const c = conn({ id: state.conns.some((x) => x.id === "c2") ? "c3" : "c2", ...body, offline: body.offline === true, token: body.token ? "set" : undefined, allowWrites: false, auth_status: { signedIn: false } }); state.conns.push(c); return json(201, c); }
       case "POST /api/connections/:id/test": return json(200, { ok: true, toolCount: tools.length, byClass: { read: 5, write: 2, destructive: 1 }, tools: tools.map((t) => ({ name: t.name, class: t.class, classSource: t.classSource })), hint: "A short list usually means missing admin roles.", fixture: "illustrative sample, not a recording" });
