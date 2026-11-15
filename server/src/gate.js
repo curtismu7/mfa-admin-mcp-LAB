@@ -24,12 +24,14 @@ export function decide({ cls, allowWrites, connId, tool, args, confirm, hash, ty
   return { ok: true };
 }
 
-const SENSITIVE_KEY = /secret|password|passwd|token|credential|api[-_]?key|authorization/i;
-function redactArgs(v, secrets, depth = 0) {
+// The audit records the arguments as they were sent (owner, 2026-11-15: no redaction by argument name). Only this lab's OWN stored
+// credentials (a connection's client secret or token, a live access/refresh token) are masked if one appears as a value, so the
+// write-only rule for them still holds. Size caps stay so one call cannot fill the log.
+function auditArgs(v, secrets, depth = 0) {
   if (depth > 6) return '[deep]';
-  if (Array.isArray(v)) return v.slice(0, 50).map((x) => redactArgs(x, secrets, depth + 1));
-  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).slice(0, 50).map(([k, x]) => [k, SENSITIVE_KEY.test(k) ? '[redacted]' : redactArgs(x, secrets, depth + 1)]));
-  return typeof v === 'string' ? scrub(v, secrets).slice(0, 300) : v;
+  if (Array.isArray(v)) return v.slice(0, 50).map((x) => auditArgs(x, secrets, depth + 1));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).slice(0, 50).map(([k, x]) => [k, auditArgs(x, secrets, depth + 1)]));
+  return typeof v === 'string' ? scrub(v, secrets).slice(0, 2000) : v;
 }
 
 export function createAudit({ dir, now = () => new Date() }) {
@@ -38,7 +40,7 @@ export function createAudit({ dir, now = () => new Date() }) {
   return {
     file,
     record({ conn, tool, cls, outcome, args, hash, note }, secrets = []) {
-      const e = { at: now().toISOString(), connectionId: conn.id, connection: scrub(conn.label, secrets), kind: conn.kind, tool: scrub(String(tool), secrets).slice(0, 120), class: cls ?? null, outcome, argsHash: hash ?? null, args: redactArgs(args ?? {}, secrets) };
+      const e = { at: now().toISOString(), connectionId: conn.id, connection: scrub(conn.label, secrets), kind: conn.kind, tool: scrub(String(tool), secrets).slice(0, 120), class: cls ?? null, outcome, argsHash: hash ?? null, args: auditArgs(args ?? {}, secrets) };
       if (note) e.note = scrub(String(note), secrets).slice(0, 200);
       mem.push(e); if (mem.length > 500) mem.shift();
       try {

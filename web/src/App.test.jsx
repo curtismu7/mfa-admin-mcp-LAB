@@ -329,13 +329,14 @@ test("a tool the identity does not see is explained, not a blank page", async ()
   expect(await screen.findByText(/does not see a tool called/)).toBeInTheDocument();
 });
 
-test("audit page lists every call, redacted, as text", async () => {
-  fakeApi({ audit: [{ at: "2026-01-01T00:00:00Z", connection: "Mock demo", tool: "createUser", class: "write", outcome: "blocked:writes_disabled", argsHash: "deadbeefdeadbeef", args: { username: "<script>x</script>", clientSecret: "[redacted]" } }] });
+test("audit page lists every call, arguments exactly as recorded, as text", async () => {
+  fakeApi({ audit: [{ at: "2026-01-01T00:00:00Z", connection: "Mock demo", tool: "createUser", class: "write", outcome: "blocked:writes_disabled", argsHash: "deadbeefdeadbeef", args: { username: "<script>x</script>", clientSecret: "shown-as-sent" } }] });
   go("#/audit");
   render(<App />);
   const row = await screen.findByTestId("audit-row");
   expect(row).toHaveTextContent("blocked:writes_disabled");
-  expect(row).toHaveTextContent("[redacted]");
+  expect(row).toHaveTextContent("shown-as-sent");
+  expect(screen.getByRole("columnheader", { name: "Arguments" })).toBeInTheDocument();
   expect(row).toHaveTextContent("<script>x</script>");
   expect(document.querySelector("script:not([src])")).toBeNull();
 });

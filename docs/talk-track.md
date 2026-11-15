@@ -98,7 +98,7 @@ Why it matters: Typing the name forces a read of what is about to happen.
 
 ### Step 5. Read the audit
 
-Do: Every call, allowed or blocked, is in the audit page with secrets redacted.
+Do: Every call, allowed or blocked, is in the audit page with its arguments as sent.
 
 Say: "I can show exactly what was asked, by whom, and what happened."
 

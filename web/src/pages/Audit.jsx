@@ -10,13 +10,13 @@ export default function Audit() {
   return (
     <>
       <h1>Audit</h1>
-      <p className="lede">Every call this app was asked to make, allowed or blocked, newest first. Argument values that look like secrets are redacted; tokens and client secrets are never written here. The file is local (mode 600).</p>
+      <p className="lede">Every call this app was asked to make, allowed or blocked, newest first. Arguments are shown exactly as sent, nothing redacted by name; this app's own stored client secrets and tokens are never written here. The file is local (mode 600).</p>
       <button type="button" onClick={load}>Refresh</button>
       {entries && entries.length === 0 && <p>No calls yet.</p>}
       {entries && entries.length > 0 && (
         <div className="scroll">
           <table>
-            <thead><tr><th>Time</th><th>Connection</th><th>Tool</th><th>Class</th><th>Outcome</th><th>Args hash</th><th>Arguments (redacted)</th></tr></thead>
+            <thead><tr><th>Time</th><th>Connection</th><th>Tool</th><th>Class</th><th>Outcome</th><th>Args hash</th><th>Arguments</th></tr></thead>
             <tbody>
               {entries.map((e, i) => (
                 <tr key={`${e.at}${i}`} data-testid="audit-row">
