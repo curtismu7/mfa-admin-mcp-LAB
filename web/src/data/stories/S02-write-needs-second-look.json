@@ -39,7 +39,7 @@
     {
       "n": 5,
       "title": "Read the audit",
-      "tell": "Every call, allowed or blocked, is in the audit page with secrets redacted.",
+      "tell": "Every call, allowed or blocked, is in the audit page with its arguments as sent.",
       "say": "I can show exactly what was asked, by whom, and what happened.",
       "why": "A log of blocked calls is as useful as a log of allowed ones."
     }

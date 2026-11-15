@@ -18,7 +18,7 @@ const CARDS = [
   { id: 'short-list', label: 'Why a short tool list', description: 'Story: the list is gated by the signed-in user\'s roles. Sign in to the mock demo as mock.viewer, then as mock.admin, and watch it grow.', group: 'concept', href: '/#/stories', terms: ['role-gated-tool-list'], story: 'S01' },
   { id: 'second-look', label: 'A write needs a second look', description: 'Story: writes are blocked, then confirmed on the exact arguments; destructive calls need the name typed.', group: 'concept', href: '/#/stories', terms: ['read-only-by-default', 'confirm-gate', 'audit-log'], story: 'S02' },
   { id: 'mcp-first', label: 'MCP first, Management API second', description: 'When to use the hosted MCP tools and when to fall back to the REST API.', group: 'concept', href: '/#/mcp-first', terms: ['mcp-first-rule'] },
-  { id: 'audit', label: 'Audit log', description: 'Every call, allowed or blocked, redacted.', group: 'reference', href: '/#/audit', terms: ['audit-log'] },
+  { id: 'audit', label: 'Audit log', description: 'Every call, allowed or blocked, arguments as sent.', group: 'reference', href: '/#/audit', terms: ['audit-log'] },
   { id: 'diagram', label: 'Diagram', description: 'Client, gate, token source and server. Movable boxes, Simulate, Reset, speed.', group: 'concept', href: '/#/diagram' },
 ];
 

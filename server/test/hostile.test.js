@@ -93,15 +93,19 @@ test('a noun-first tool with a lying readOnlyHint is treated as destructive and 
   assert.equal(noConfirm.json.error, 'confirm_required'); assert.equal(noConfirm.json.requiresTypedName, true);
   assert.deepEqual(upstreamCalls, [], 'nothing was sent upstream');
 });
-test('audit log redacts sensitive argument keys (in memory, over GET /api/audit and in audit.jsonl)', async () => {
+test('audit log records arguments as sent, whatever their names; only stored credentials of the connection are masked (memory, GET /api/audit and audit.jsonl)', async () => {
   mode.token = 'ok'; mode.mcp = 'ok';
   const c = await add(); await writes(c.id);
   const args = { name: 'x', password: 'PW-VALUE-9911', clientSecret: 'CS-VALUE-9911', nested: { access_token: 'TK-VALUE-9911', api_key: 'AK-VALUE-9911', authorization: 'AZ-VALUE-9911' }, list: [{ credential: 'CR-VALUE-9911' }] };
   const first = await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createApplication', arguments: args });
   const done = await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createApplication', arguments: args, confirm: true, argsHash: first.json.argsHash });
   assert.equal(done.status, 200, done.text);
-  const api = (await s.call('GET', '/api/audit')).text; const file = fs.readFileSync(path.join(s.dir, 'audit.jsonl'), 'utf8');
-  for (const v of ['PW-VALUE-9911', 'CS-VALUE-9911', 'TK-VALUE-9911', 'AK-VALUE-9911', 'AZ-VALUE-9911', 'CR-VALUE-9911']) { assert.ok(!api.includes(v), `api leaked ${v}`); assert.ok(!file.includes(v), `file leaked ${v}`); }
-  assert.match(file, /"password":"\[redacted\]"/);
-  assert.match(file, /"name":"x"/, 'non-sensitive arguments are still recorded');
+  const api = (await s.call('GET', '/api/audit')).json.entries.at(-1); const file = fs.readFileSync(path.join(s.dir, 'audit.jsonl'), 'utf8');
+  assert.deepEqual(api.args, args, 'the audit shows the arguments exactly as sent');
+  for (const v of ['PW-VALUE-9911', 'CS-VALUE-9911', 'TK-VALUE-9911', 'AK-VALUE-9911', 'AZ-VALUE-9911', 'CR-VALUE-9911']) assert.ok(file.includes(v), `file has ${v}`);
+  assert.ok(!file.includes('[redacted]'));
+  // the lab's own stored credential is still masked if it shows up as a value
+  const own = (await s.call('POST', '/api/connections', { kind: 'pingone', offline: true, region: 'com', envId: ENV_ID, auth: 'worker', clientId: 'a', clientSecret: 'OWN-STORED-SECRET-7' })).json;
+  await s.call('POST', `/api/connections/${own.id}/call`, { tool: 'listUsers', arguments: { environmentId: ENV_ID, filter: 'OWN-STORED-SECRET-7' } });
+  assert.ok(!(await s.call('GET', '/api/audit')).text.includes('OWN-STORED-SECRET-7'));
 });

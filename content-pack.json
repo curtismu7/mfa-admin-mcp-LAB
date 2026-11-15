@@ -28,7 +28,7 @@
     {
       "id": "audit-log",
       "term": "Audit log",
-      "definition": "A local, append-only record of every call, allowed or blocked: when, which connection, which tool, its class, the outcome, the arguments (secret-looking keys redacted) and their hash. Secrets and tokens are scrubbed before anything is written.",
+      "definition": "A local, append-only record of every call, allowed or blocked: when, which connection, which tool, its class, the outcome, the arguments exactly as sent, and their hash. This app's own stored secrets and tokens are masked if they appear as a value.",
       "aliases": []
     },
     {
@@ -103,7 +103,7 @@
     {
       "id": "audit",
       "label": "Audit log",
-      "description": "Every call, allowed or blocked, redacted.",
+      "description": "Every call, allowed or blocked, arguments as sent.",
       "group": "reference",
       "terms": [
         "audit-log"
