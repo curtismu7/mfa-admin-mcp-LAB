@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
-import { conn, ENV, fakeApi, LIVE_REFUSED, TOOLS } from "./test-helpers.js";
+import { conn, ENV, fakeApi, LIVE_REFUSED, PRESETS, TOOLS } from "./test-helpers.js";
 
 beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catch { /* none */ } delete document.documentElement.dataset.present; });
 const pressLive = async (user) => { await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); await user.selectOptions(screen.getByTestId("mode-select"), "real"); };
@@ -94,8 +94,33 @@ test("the toggle decides which connections are shown: the mock demo in Mock, the
   expect(screen.queryByText("Mock demo one")).toBeNull();
   expect(screen.queryByRole("button", { name: "Add mock demo (sign in)" })).toBeNull();
   expect(screen.getByRole("button", { name: "Save connection" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Add banking MCP" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Connect to Banking MCP" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /PingOne worker/ })).toBeNull(); // no worker preset: a PingOne connection is a user sign-in
+});
+
+test("Working demos: a running server offers Connect, then Use once connected; a stopped one shows its start command; Mock asks nothing", async () => {
+  const api = fakeApi({ conns: [conn({ id: "c8", offline: false, label: "Other", kind: "custom", url: "http://127.0.0.1:9/mcp" }), conn({ id: "c9", offline: false, label: "Banking MCP (local)", kind: "custom", url: "http://localhost:8081/mcp" })],
+    presets: [{ ...PRESETS[0] }, { ...PRESETS[1] }, { id: "x", name: "Third MCP", folder: "x-LAB", command: "docker compose up -d", url: "http://localhost:9911/mcp", running: true }] });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByTestId("banner");
+  expect(api.calls.some((c) => c.url === "/api/presets")).toBe(false); // Mock: no status check
+  await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false));
+  await user.selectOptions(screen.getByTestId("mode-select"), "real");
+  const bank = await screen.findByTestId("preset-banking");
+  expect(within(bank).getByRole("button", { name: "Use Banking MCP (connected)" })).toBeInTheDocument(); // already saved: Use, not Add
+  expect(bank).toHaveTextContent("running at localhost:8081/mcp");
+  const os = screen.getByTestId("preset-opensearch");
+  expect(os).toHaveTextContent(/OpenSearch MCP is not running at localhost:9900\/mcp\. Start it from your AI-DEMO2 folder/);
+  expect(within(os).getByTestId("preset-opensearch-cmd")).toHaveTextContent("docker compose --profile mcpgw up -d opensearch-mcp-server");
+  expect(within(os).queryByRole("button", { name: /Connect|Use/ })).toBeNull();
+  expect(within(os).getByRole("button", { name: "Copy command" })).toBeInTheDocument();
+  expect(within(screen.getByTestId("preset-x")).getByRole("button", { name: "Connect to Third MCP" })).toBeInTheDocument();
+  await user.click(within(bank).getByRole("button", { name: "Use Banking MCP (connected)" }));
+  expect(await within(screen.getByTestId("preset-banking")).findByRole("button", { name: "Banking MCP in use" })).toBeDisabled();
+  const before = api.calls.filter((c) => c.url === "/api/presets").length;
+  await user.click(screen.getByRole("button", { name: "Check again" }));
+  await waitFor(() => expect(api.calls.filter((c) => c.url === "/api/presets").length).toBe(before + 1));
 });
 
 test("Live is refused when the server says a guard fails: the page stays in Mock, says why, and nothing is sent", async () => {

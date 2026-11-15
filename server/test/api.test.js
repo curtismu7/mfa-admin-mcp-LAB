@@ -296,6 +296,22 @@ test('presets: banking/opensearch create custom connections; there is no PingOne
     assert.equal(gone.status, 404); assert.equal(gone.json.error, 'unknown_preset');
   } finally { await t.close(); }
 });
+test('preset status: in Live each preset says whether its server answers and how to start it; in Mock nothing is probed', async () => {
+  const up = http.createServer((_req, res) => { res.statusCode = 405; res.end(); }); // any HTTP answer counts as running
+  await new Promise((r) => up.listen(0, '127.0.0.1', r));
+  const t = await startApp({ env: { MFAADM_BANKING_URL: `http://127.0.0.1:${up.address().port}/mcp`, MFAADM_OPENSEARCH_URL: 'http://127.0.0.1:1/mcp' } });
+  try {
+    const mock = (await t.call('GET', '/api/presets')).json.presets;
+    assert.deepEqual(mock.map((p) => p.running), [null, null], 'the page opens in Mock: no probe');
+    assert.equal((await t.call('POST', '/api/mode', { source: 'real' })).status, 200);
+    const [b, o] = (await t.call('GET', '/api/presets')).json.presets;
+    assert.deepEqual([b.id, b.running, b.name], ['banking', true, 'Banking MCP']);
+    assert.deepEqual([o.id, o.running, o.url], ['opensearch', false, 'http://127.0.0.1:1/mcp']);
+    assert.deepEqual([b.folder, b.command], ['mcp-resource-server-LAB', 'docker compose up -d']);
+    assert.deepEqual([o.folder, o.command], ['AI-DEMO2', 'docker compose --profile mcpgw up -d opensearch-mcp-server']);
+    assert.equal(b.token, undefined, 'the status carries no token');
+  } finally { await t.close(); up.close(); }
+});
 test('preset defaults: neutral labels, and no port the rulebook reserves for other tools', async () => {
   const t = await startApp({ env: {} });
   try {

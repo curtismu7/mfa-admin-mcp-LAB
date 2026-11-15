@@ -97,6 +97,32 @@ function Wizard({ onCreated, say, defaults }) {
   );
 }
 
+// One local MCP server from the Working demos card: running and not yet connected (Connect), already connected (Use), or not running (how to start it).
+function PresetRow({ p, conns, activeId, onConnect, onSelect, say }) {
+  const existing = conns.find((c) => c.kind === "custom" && c.url === p.url);
+  const where = p.url.replace(/^https?:\/\//, "");
+  async function copy() {
+    try { await navigator.clipboard.writeText(p.command); say("Start command copied."); } catch { say("Copy failed: select the command and copy it by hand."); }
+  }
+  if (p.running === undefined || p.running === null) return <div className="row" data-testid={`preset-${p.id}`}><button type="button" className="primary" disabled>Checking {p.name}…</button></div>;
+  if (!p.running) {
+    return (
+      <div data-testid={`preset-${p.id}`}>
+        <p><strong>{p.name} is not running</strong> at <code>{where}</code>. Start it from your <code>{p.folder}</code> folder, then press Check again:</p>
+        <p className="row"><code data-testid={`preset-${p.id}-cmd`}>{p.command}</code> <button type="button" onClick={copy}>Copy command</button></p>
+      </div>
+    );
+  }
+  const inUse = existing && existing.id === activeId;
+  return (
+    <div className="row" data-testid={`preset-${p.id}`}>
+      {!existing && <button type="button" className="primary" onClick={() => onConnect(p.id, p.name)}>Connect to {p.name}</button>}
+      {existing && <button type="button" className="primary" disabled={inUse} aria-pressed={inUse} onClick={() => onSelect(existing.id)}>{inUse ? `${p.name} in use` : `Use ${p.name} (connected)`}</button>}
+      <small className="hint">running at <code>{where}</code></small>
+    </div>
+  );
+}
+
 const PF_NEEDS = "PF login needs a PingFederate base URL: add a connection with Authorization server = PingFederate.";
 
 function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
@@ -158,6 +184,10 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
 
 export default function Connections({ defaults, mode, conns, activeId, onSelect, reload, tests, testBusy, runTest, now, say }) {
   const active = conns.find((c) => c.id === activeId);
+  // In Live, ask the server which local demo servers answer. In Mock the page asks nothing (the server would not probe anyway).
+  const [presets, setPresets] = useState(null);
+  const checkPresets = async () => { setPresets(null); const r = await api.get("/api/presets"); setPresets(r.ok ? r.json.presets : []); };
+  useEffect(() => { if (mode === "live") checkPresets(); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
   // The mock demo is a user sign-in like a real PingOne connection: the tools it lists follow the mock account that signs in.
   async function demo() {
     const body = { kind: "pingone", offline: true, label: "Mock demo (sign in as mock.admin or mock.viewer)", region: "com", envId: DEMO_ENV_ID, endpointStyle: "mcp-host", auth: "interactive", clientId: "mock-native-app" };
@@ -188,11 +218,11 @@ export default function Connections({ defaults, mode, conns, activeId, onSelect,
       {mode === "live" && (
         <section className="card" aria-labelledby="presets-h">
           <h2 id="presets-h">Working demos</h2>
-          <p>One click each. Banking and OpenSearch are local MCP servers on this machine (they must be running). For your PingOne tenant use Setup below: it creates the sign-in application, and you sign in as yourself. You can still add your own connections below.</p>
-          <div className="row wrap">
-            <button type="button" className="primary" onClick={() => preset("banking", "Banking MCP")}>Add banking MCP</button>
-            <button type="button" className="primary" onClick={() => preset("opensearch", "OpenSearch MCP")}>Add OpenSearch MCP</button>
-          </div>
+          <p>Banking and OpenSearch are local MCP servers on this machine. The lab checks whether each one is running: connect with one click, or copy the command that starts it (the lab runs in its own container and cannot start them itself). For your PingOne tenant use Setup below: it creates the sign-in application, and you sign in as yourself. You can still add your own connections below.</p>
+          {presets === null
+            ? <p className="hint" role="status">Checking which demo servers are running…</p>
+            : presets.map((p) => <PresetRow key={p.id} p={p} conns={conns} activeId={activeId} onConnect={preset} onSelect={onSelect} say={say} />)}
+          <button type="button" onClick={checkPresets} disabled={presets === null}>Check again</button>
         </section>
       )}
       {conns.length > 0 && <ul className="plain">{conns.map((c) => <ConnCard key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} onChange={reload} onTest={runTest} say={say} />)}</ul>}

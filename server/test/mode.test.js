@@ -30,6 +30,7 @@ test('with Live refused by the bind: a saved Live connection cannot be created, 
     assert.equal(r.status, 403, r.text); assert.equal(r.json.error, 'live_refused'); assert.deepEqual(r.json.failed, ['loopback-bind']);
   }
   for (const id of ['banking', 'opensearch']) assert.equal((await s.call('POST', `/api/presets/${id}`)).status, 403, id);
+  assert.deepEqual((await s.call('GET', '/api/presets')).json.presets.map((p) => p.running), [null, null], 'no probe while Live is refused');
   for (const id of ['nope', 'pingone', '__proto__', 'constructor', 'toString']) { const r = await s.call('POST', `/api/presets/${id}`); assert.equal(r.status, 404, id); assert.equal(r.json.error, 'unknown_preset', id); }
   assert.equal(s.app.locals.store.list().length, 0);
 });
