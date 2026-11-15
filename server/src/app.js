@@ -83,8 +83,10 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     const secrets = conn ? secretsFor(conn) : auth.allSecrets();
     const message = scrub(err?.message || 'error', secrets).slice(0, 300);
     const code = err?.code || 'internal_error';
-    const status = /^(login_required|invalid_credentials|invalid_otp)$/.test(code) ? 401 : code === 'login_expired' ? 410 : /^(login_unsupported|worker_unsupported)$/.test(code) ? 409 : code === 'mcp_timeout' ? 504
-      : /^(mcp_|token_|jwks_|pi_flow_|bad_id_token|iss_mismatch|aud_mismatch|nonce_mismatch)/.test(code) ? 502 : /^(bad_request|pf_not_configured|not_interactive)$/.test(code) ? 400 : 500;
+    // An upstream failure (the MCP server, the token endpoint, the sign-in flow) answers 424, not 502/504: the lab proxy replaces
+    // every 502/503/504 body with its own "lab down" page, which would hide the reason this body carries.
+    const status = /^(login_required|invalid_credentials|invalid_otp)$/.test(code) ? 401 : code === 'login_expired' ? 410 : /^(login_unsupported|worker_unsupported)$/.test(code) ? 409
+      : /^(mcp_|token_|jwks_|pi_flow_|bad_id_token|iss_mismatch|aud_mismatch|nonce_mismatch)/.test(code) ? 424 : /^(bad_request|pf_not_configured|not_interactive)$/.test(code) ? 400 : 500;
     const body = { error: String(code), message: status === 500 && !err?.code ? 'internal error' : message };
     if (err?.httpStatus) body.upstreamStatus = err.httpStatus;
     return res.status(status).json(body);

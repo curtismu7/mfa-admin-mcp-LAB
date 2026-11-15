@@ -432,7 +432,7 @@ test("Test connection shows its result in a modal: verdict and tool count", asyn
 });
 
 test("a failed test shows the error class and message in the modal", async () => {
-  fakeApi({ conns: [conn({ offline: false, label: "Prod tenant" })], handlers: { "POST /api/connections/:id/test": (body, state, json) => json(502, { error: "mcp_unreachable", message: "MCP HTTP request unreachable (ECONNREFUSED)" }) } });
+  fakeApi({ conns: [conn({ offline: false, label: "Prod tenant" })], handlers: { "POST /api/connections/:id/test": (body, state, json) => json(424, { error: "mcp_unreachable", message: "MCP HTTP request unreachable (ECONNREFUSED)" }) } });
   const user = userEvent.setup();
   render(<App />);
   await pressLive(user);
@@ -522,7 +522,7 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
 test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
   const message = "the authorization server did not open a sign-in flow (HTTP 400: invalid_request: redirect_uri mismatch).";
   fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })],
-    handlers: { "POST /api/connections/:id/login/start": (_b, _s, json) => json(502, { error: "pi_flow_unavailable", message }) } });
+    handlers: { "POST /api/connections/:id/login/start": (_b, _s, json) => json(424, { error: "pi_flow_unavailable", message }) } });
   const user = userEvent.setup();
   render(<App />);
   await user.click(await screen.findByRole("button", { name: "P1 login" }));
