@@ -34,7 +34,7 @@
     {
       "id": "authorization-code-pkce",
       "term": "Authorization code with PKCE",
-      "definition": "The interactive sign-in: the admin is sent to the authorization server, approves, and comes back with a code that is exchanged using a one-time secret (the PKCE verifier, S256). This app adds state and nonce, checks the issuer, and accepts the callback only on the exact registered loopback redirect URI.",
+      "definition": "The interactive sign-in, as PingOne's native flow (pi.flow): this app shows the sign-in form itself, drives the flow at the authorization server, and gets a code that it exchanges using a one-time secret (the PKCE verifier, S256) as a public client. There is no redirect and no callback. This app adds a nonce and checks the id token's signature, issuer and audience.",
       "aliases": [
         "PKCE",
         "interactive admin OAuth"

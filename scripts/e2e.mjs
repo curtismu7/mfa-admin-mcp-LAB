@@ -258,15 +258,24 @@ try {
   check(await page.evaluate(() => document.documentElement.dataset.present) === '1', 'presenter mode turns on');
   await page.keyboard.press('Escape');
 
-  // interactive login against the stub AS, browser follows the redirect and back
+  // interactive login against the stub AS as a native flow (pi.flow): the page's own dialog, no redirect, no new page
   await page.getByRole('link', { name: 'Connections' }).click();
   await page.getByRole('button', { name: /Add mock demo with sign-in/ }).click();
   await page.getByRole('button', { name: 'P1 login' }).waitFor();
   await page.getByRole('button', { name: 'P1 login' }).click();
-  await page.waitForURL(/login=|#/, { timeout: 8000 }).catch(() => {});
+  await page.getByTestId('login-dialog').waitFor({ timeout: 8000 });
+  check(await page.getByTestId('login-username').inputValue() === 'mock.admin', 'interactive: the dialog opens on the page with the mock account filled in');
+  await page.getByTestId('login-password').fill('not-the-password');
+  await page.getByTestId('login-submit').click();
+  await page.getByTestId('login-error').waitFor({ timeout: 8000 });
+  check(await page.getByTestId('login-password').inputValue() === '', 'a wrong password is refused and the field is emptied');
+  await page.getByTestId('login-password').fill('mock-password');
+  await page.getByTestId('login-submit').click();
+  await page.getByTestId('login-otp').waitFor({ timeout: 8000 });
+  await page.getByTestId('login-submit').click(); // the mock code is filled in
   await page.getByTestId('tool-count').waitFor({ timeout: 8000 });
-  check((await page.getByTestId('identity').innerText()).includes('signed in as mock-admin-user'), 'interactive: back from the stub AS, signed in as <sub>');
-  check(!page.url().includes('code=') && !page.url().includes('login='), 'the callback query is cleaned from the address bar');
+  check((await page.getByTestId('identity').innerText()).includes('signed in as mock-admin-user'), 'interactive: signed in as <sub> after password and code');
+  check(!page.url().includes('code=') && !page.url().includes('login='), 'no authorization code or callback query ever reaches the address bar (no redirect)');
   check((await page.locator('[data-testid="conn-card"]').last().innerText()).includes('Sign out'), 'a Sign out button replaces Sign in');
   await shot('12-interactive');
   await page.getByRole('button', { name: /^Sign out/ }).click();

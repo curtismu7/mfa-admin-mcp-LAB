@@ -34,15 +34,18 @@ test('the two diagrams are valid diagram-studio/1 data under the studio validato
   }
 });
 
-test('the data keeps the original picture: five boxes, one layout, 5 arrows and steps for the worker, 7 for the interactive sign-in, two dashed redirect arrows', () => {
+test('the data keeps the picture: five boxes, one layout, 5 arrows and steps for the worker; the native-flow sign-in has 5 arrows walked by 7 steps and no dashed redirect arrows', () => {
   const w = read('worker'), i = read('interactive');
   assert.deepEqual(w.nodes.map((n) => [n.id, n.x, n.y]), [['browser', 0, 150], ['app', 300, 150], ['token', 300, -60], ['mcp', 600, 150], ['api', 900, 150]]);
   assert.deepEqual(i.nodes, w.nodes, 'both models share one layout');
   assert.equal(w.edges.length, 5); assert.equal(w.steps.length, 5);
-  assert.equal(i.edges.length, 7); assert.equal(i.steps.length, 7);
-  assert.deepEqual(i.edges.filter((e) => e.dashed).map((e) => e.label), ['sign in (redirect)', 'back with a code']);
+  assert.equal(i.edges.length, 5); assert.equal(i.steps.length, 7);
+  assert.equal(i.edges.filter((e) => e.dashed).length, 0, 'pi.flow has no redirect, so the browser never has an arrow to the token endpoint');
+  assert.ok(!i.edges.some((e) => e.source === 'browser' && e.target === 'token'));
   assert.equal(w.edges.filter((e) => e.dashed).length, 0);
-  for (const d of [w, i]) assert.deepEqual(d.steps.map((st) => st.edges), d.edges.map((_, k) => [k]), 'each step walks one arrow, in order');
+  assert.deepEqual(w.steps.map((st) => st.edges), w.edges.map((_, k) => [k]), 'each worker step walks one arrow, in order');
+  assert.deepEqual([...new Set(i.steps.flatMap((st) => st.edges))].sort(), i.edges.map((_, k) => k), 'every sign-in arrow is walked by some step');
+  assert.match(i.lede, /pi\.flow/);
 });
 
 test('GET /api/diagrams lists names and titles; GET /api/diagrams/:name returns exactly the validated file', async () => {

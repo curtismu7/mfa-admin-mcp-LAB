@@ -2,8 +2,8 @@
 # The server binds 0.0.0.0 INSIDE the container (MFAADM_BIND is the opt-in), but the port is published on loopback only.
 # Do not change the 127.0.0.1 below: Live can act on a PingOne tenant's admin plane (a test pins it).
 # Mock is the default and needs nothing. Live is available from the header toggle (the container bind passes the guard).
-# Interactive sign-in (Live only): register the redirect URI http://localhost:<HOST_PORT>/api/oauth/callback on your OAuth application
-# (the port you PUBLISH). The app compares the redirect URI's port with the Host header's port.
+# Interactive sign-in (Live only) is PingOne's native flow (pi.flow): this app drives it, so there is no callback URL and no port to register.
+# The OAuth application must be a public native app; the Setup card on the Connections page creates one.
 name: mfa-admin-mcp-lab
 
 services:

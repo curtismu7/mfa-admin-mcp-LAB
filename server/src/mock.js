@@ -57,13 +57,27 @@ const GENERAL_CATALOG = [
 ];
 
 const CATALOG = [...MFA_CATALOG, ...GENERAL_CATALOG];
+
+// The mock authorization server's native (pi.flow) sign-in. These accounts exist ONLY here; the dialog offers them for the mock connection.
+// mock.admin: password, then an SMS code. mock.nomfa: password only. mock.multi: password, a device choice (SMS or email), then the code.
+export const MOCK_LOGIN = { username: 'mock.admin', password: 'mock-password', otp: '123456' };
+const SMS = { id: 'mock-dev-sms', type: 'SMS', phone: '+1 *** *** 0142', usableStatus: { status: 'ENABLED' } };
+const EMAIL = { id: 'mock-dev-email', type: 'EMAIL', email: 'mock.multi@example.invalid', usableStatus: { status: 'ENABLED' } };
+const MOCK_USERS = { 'mock.admin': { devices: [SMS] }, 'mock.nomfa': { devices: [] }, 'mock.multi': { devices: [SMS, EMAIL] } };
+// PingOne and PingFederate name the same steps differently (vendor content types, error codes); the mock answers both.
+const FLOW_KINDS = {
+  pingone: { password: 'usernamePassword.check', otp: 'otp.check', device: 'device.select', badPassword: 'INVALID_CREDENTIALS', badOtp: 'OTP_VALIDATION_FAILED' },
+  pf: { password: 'checkUsernamePassword', otp: 'checkOtp', device: 'selectDevice', cont: 'continueAuthentication', badPassword: 'CREDENTIAL_VALIDATION_FAILED', badOtp: 'INVALID_OTP' },
+};
+const vnd = (name) => `application/vnd.pingidentity.${name}+json`;
 const stripRole = ({ role, ...t }) => t;
 
 export function createMock({ now = Date.now } = {}) {
-  const config = { forgeIdToken: false, sse: false, expiresIn: 3600, issOverride: null, nonceOverride: null, audOverride: null, calls: [] };
+  const config = { forgeIdToken: false, sse: false, expiresIn: 3600, issOverride: null, nonceOverride: null, audOverride: null, calls: [], resumeAsJson: false, afterPassword: null, flowSteps: [] };
   const tokens = new Map();   // access -> { role, exp, sub, clientId }
   const refreshes = new Map(); // refresh -> { role, sub, clientId }
   const codes = new Map();     // code -> { clientId, redirectUri, challenge, nonce, role, envId }
+  const flows = new Map();     // flow id -> { kind, clientId, redirectUri, challenge, nonce, envId, status, user, st, devices, code }
   const clients = new Map();   // id -> { secret, role }  (unregistered ids are accepted offline)
   const freshTenant = () => ({
     users: [{ id: 'u1', username: 'sample.user', enabled: true }, { id: 'u2', username: 'other.user', enabled: true }],
@@ -166,6 +180,57 @@ export function createMock({ now = Date.now } = {}) {
   const readBody = (req) => new Promise((resolve) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => resolve(b)); });
   const send = (res, status, body, type = 'application/json', extra = {}) => { res.writeHead(status, { 'Content-Type': type, ...extra }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
 
+
+  // ---- native flow (response_mode=pi.flow): POST steps to the flow, carrying the session-token cookie that rotates on every step.
+  const stCookie = (flow) => ({ 'Set-Cookie': `ST=${flow.st}; Path=/; HttpOnly` });
+  const flowView = (flow, extra = {}) => ({ id: flow.id, status: flow.status, ...extra });
+  function openFlow(parts, q) {
+    if (q.get('response_type') !== 'code' || q.get('response_mode') !== 'pi.flow' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge') || !q.get('nonce') || !q.get('redirect_uri') || !q.get('client_id')) return null;
+    const flow = { id: `mockflow${crypto.randomBytes(8).toString('hex')}`, kind: parts[2] === 'pf' ? 'pf' : 'pingone', clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), challenge: q.get('code_challenge'), nonce: q.get('nonce'), envId: parts[0], status: 'USERNAME_PASSWORD_REQUIRED', st: crypto.randomBytes(12).toString('hex') };
+    flows.set(flow.id, flow);
+    return flow;
+  }
+  const deviceBody = (flow, devices) => ({ _embedded: { devices }, devices, ...(devices.length === 1 ? { selectedDevice: { id: devices[0].id } } : {}), id: flow.id });
+  function issueCode(flow) {
+    const code = crypto.randomBytes(16).toString('hex');
+    codes.set(code, { clientId: flow.clientId, redirectUri: flow.redirectUri, challenge: flow.challenge, nonce: flow.nonce, role: roleOf(flow.clientId), envId: flow.envId });
+    return code;
+  }
+  async function flowStep(req, res, flow) {
+    const k = FLOW_KINDS[flow.kind];
+    const ct = String(req.headers['content-type'] || '').split(';')[0].trim();
+    if (flow.kind === 'pf' && !req.headers['x-xsrf-header']) return send(res, 403, { code: 'CSRF_REQUIRED' });
+    const sent = /(?:^|;\s*)ST=([^;]+)/.exec(String(req.headers.cookie || ''))?.[1];
+    if (sent !== flow.st) return send(res, 401, { code: 'INVALID_TOKEN', message: 'Session token cookie value does not match' });
+    let b; try { b = JSON.parse(await readBody(req) || '{}'); } catch { return send(res, 400, { code: 'INVALID_REQUEST' }); }
+    const done = (extra) => { flow.st = crypto.randomBytes(12).toString('hex'); config.flowSteps.push({ kind: flow.kind, status: flow.status, contentType: ct }); return send(res, 200, flowView(flow, extra), 'application/json', stCookie(flow)); };
+    const finishFlow = () => { flow.status = 'COMPLETED'; flow.code = issueCode(flow); return done(flow.kind === 'pf' ? { authorizeResponse: { code: flow.code } } : { resumeUrl: `${base}/${flow.envId}/as/resume?flowId=${flow.id}` }); };
+    const stepName = Object.entries(k).find(([, v]) => v && ct === vnd(v))?.[0];
+    if (stepName === 'password' && flow.status === 'USERNAME_PASSWORD_REQUIRED') {
+      const u = MOCK_USERS[b.username];
+      if (!u || b.password !== MOCK_LOGIN.password) return send(res, 400, { code: 'INVALID_DATA', details: [{ code: k.badPassword, message: 'The provided credentials are invalid' }] });
+      flow.user = b.username; flow.devices = u.devices;
+      if (config.afterPassword) { flow.status = config.afterPassword; return done(); }
+      if (!u.devices.length) return finishFlow();
+      flow.status = u.devices.length > 1 ? 'DEVICE_SELECTION_REQUIRED' : 'OTP_REQUIRED';
+      return done(deviceBody(flow, u.devices));
+    }
+    if (stepName === 'device' && (flow.status === 'DEVICE_SELECTION_REQUIRED' || flow.status === 'OTP_REQUIRED')) {
+      const id = flow.kind === 'pf' ? b.deviceRef?.id : b.device?.id;
+      const dev = flow.devices.find((d) => d.id === id);
+      if (!dev) return send(res, 400, { code: 'INVALID_DATA', details: [{ code: 'INVALID_VALUE', message: 'unknown device' }] });
+      flow.status = 'OTP_REQUIRED';
+      return done(deviceBody(flow, [dev]));
+    }
+    if (stepName === 'otp' && flow.status === 'OTP_REQUIRED') {
+      if (b.otp !== MOCK_LOGIN.otp) return send(res, 400, { code: 'INVALID_DATA', details: [{ code: k.badOtp, message: 'The passcode is not valid' }] });
+      if (flow.kind === 'pf') { flow.status = 'MFA_COMPLETED'; return done(); }
+      return finishFlow();
+    }
+    if (stepName === 'cont' && flow.status === 'MFA_COMPLETED') return finishFlow();
+    return send(res, stepName ? 400 : 415, { code: stepName ? 'INVALID_FLOW_STATE' : 'UNSUPPORTED_MEDIA_TYPE', message: `${flow.status}: that step is not allowed now` });
+  }
+
   async function handle(req, res) {
     const url = new URL(req.url, base || 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
@@ -173,6 +238,16 @@ export function createMock({ now = Date.now } = {}) {
     if (parts[1] === 'as' && parts[2] === 'authorization.oauth2') parts[2] = 'authorize';
     if (parts[1] === 'as' && parts[2] === 'token.oauth2') parts[2] = 'token';
     if (parts[1] === 'pf' && parts[2] === 'JWKS') { parts[1] = 'as'; parts[2] = 'jwks'; }
+    if (parts[1] === 'flows' && parts[2] && req.method === 'POST') { const f = flows.get(parts[2]); return f && f.kind === 'pingone' && f.envId === parts[0] ? flowStep(req, res, f) : send(res, 404, { code: 'NOT_FOUND' }); }
+    if (parts[0] === 'pf-ws' && parts[1] === 'authn' && parts[2] === 'flows' && parts[3] && req.method === 'POST') { const f = flows.get(parts[3]); return f && f.kind === 'pf' ? flowStep(req, res, f) : send(res, 404, { code: 'NOT_FOUND' }); }
+    if (parts[1] === 'as' && parts[2] === 'resume' && req.method === 'GET') {
+      const f = flows.get(url.searchParams.get('flowId') || '');
+      const sent = /(?:^|;\s*)ST=([^;]+)/.exec(String(req.headers.cookie || ''))?.[1];
+      if (!f || f.status !== 'COMPLETED' || !f.code || sent !== f.st) return send(res, 400, { code: 'INVALID_FLOW', message: 'Session token cookie value does not match' });
+      const code = f.code; f.code = null;
+      if (config.resumeAsJson) return send(res, 200, { authorizeResponse: { code } });
+      return send(res, 302, '', 'text/plain', { Location: `${f.redirectUri}?${new URLSearchParams({ code })}` });
+    }
     if (parts[0] === 'mcp' && req.method === 'POST') {
       const tok = tokens.get(String(req.headers.authorization || '').replace(/^Bearer /, ''));
       if (!tok || tok.exp <= now()) return send(res, 401, { error: 'Invalid authentication' });
@@ -209,13 +284,11 @@ export function createMock({ now = Date.now } = {}) {
       return send(res, 400, { error: 'unsupported_grant_type' });
     }
     if (parts[1] === 'as' && parts[2] === 'authorize') {
-      const q = url.searchParams;
-      if (q.get('response_type') !== 'code' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge') || !q.get('state') || !q.get('nonce') || !q.get('redirect_uri')) return send(res, 400, { error: 'invalid_request' });
-      const code = crypto.randomBytes(16).toString('hex');
-      codes.set(code, { clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), challenge: q.get('code_challenge'), nonce: q.get('nonce'), role: roleOf(q.get('client_id')), envId: parts[0] });
-      const back = new URL(q.get('redirect_uri'));
-      back.search = new URLSearchParams({ code, state: q.get('state'), iss: issuer(parts[0]) }).toString();
-      return send(res, 302, '', 'text/plain', { Location: back.toString() });
+      // Only the native flow: a redirect request is refused, the way an app that does not allow it would refuse it (rule 16).
+      const pfName = url.pathname.endsWith('/authorization.oauth2');
+      const flow = openFlow([...parts.slice(0, 2), pfName ? 'pf' : 'pingone'], url.searchParams);
+      if (!flow) return send(res, 400, { error: 'invalid_request', error_description: 'this mock authorization server answers only response_mode=pi.flow with code + PKCE S256 and a nonce' });
+      return send(res, 200, flowView(flow), 'application/json', stCookie(flow));
     }
     return send(res, 404, { error: 'not_found' });
   }
@@ -229,7 +302,7 @@ export function createMock({ now = Date.now } = {}) {
     fixturesLoaded: () => recordedFixtures.size,
     revoke: (access) => tokens.delete(access),
     // Reset: the fake tenant goes back to its starting records and every token, code and recorded call is dropped.
-    reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); config.calls.length = 0; },
+    reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); flows.clear(); config.calls.length = 0; config.flowSteps.length = 0; },
     async start() {
       server = http.createServer((q, r) => { handle(q, r).catch(() => send(r, 500, { error: 'mock_error' })); });
       await new Promise((r) => server.listen(0, '127.0.0.1', r));

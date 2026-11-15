@@ -2,10 +2,9 @@ import React, { useEffect, useState } from "react";
 import * as api from "../api.js";
 
 // Set up hosted PingOne MCP: paste a Management worker client id + secret once;
-// the lab checks the environment, finds or creates the sign-in application,
-// registers this lab's callback on it, and saves the connection. The worker
-// secret is sent to this lab's server only, used for one token mint, and never
-// stored.
+// the lab checks the environment, finds or creates its own public native sign-in
+// application (pi.flow), and saves the connection. The worker secret is sent to
+// this lab's server only, used for one token mint, and never stored.
 export default function Setup({ onCreated, say, defaults }) {
   const [f, setF] = useState({ region: defaults.region || "com", envId: defaults.envId || "", workerClientId: "", workerClientSecret: "" });
   // The default environment arrives after the first render; fill it unless the user has already typed one.
@@ -32,7 +31,7 @@ export default function Setup({ onCreated, say, defaults }) {
     const r = await api.post("/api/setup/apply", f);
     setBusy(false);
     if (!r.ok) { setErr(r.json?.message || "Setup failed."); return; }
-    say(`Sign-in application "${r.json.appName}" ${r.json.created ? "created" : "reused"}; the callback is registered.`);
+    say(`Sign-in application "${r.json.appName}" ${r.json.created ? "created" : "reused"}.`);
     const c = await api.post("/api/connections", r.json.connection);
     if (!c.ok) { setErr(c.json?.message || "The application is set up, but saving the connection failed."); return; }
     setF((x) => ({ ...x, workerClientSecret: "" })); // the secret is never stored anywhere
@@ -42,7 +41,7 @@ export default function Setup({ onCreated, say, defaults }) {
   return (
     <form className="card" onSubmit={check ? apply : checkEnv} aria-labelledby="setup-h" data-testid="setup">
       <h2 id="setup-h">Set up hosted PingOne MCP (automatic)</h2>
-      <p>The lab configures your tenant for you: it finds or creates a sign-in application (authorization code + PKCE), registers this lab's callback on it, and saves the connection. All you add afterwards is your admin sign-in.</p>
+      <p>The lab configures your tenant for you: it finds or creates its own public native sign-in application (PingOne's native flow, pi.flow, with authorization code + PKCE; no client secret exists), and saves the connection. All you add afterwards is your admin sign-in: username, password and the code PingOne sends you.</p>
       <p className="hint">Setup uses a <strong>Management worker application</strong> (client_credentials) whose identity can read and update applications — e.g. an Environment Admin role. If the lab's <code>~/.config/mfa-admin-mcp/worker.env</code> exists (PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET), it is used automatically and nothing is pasted. Otherwise paste the client id and secret below: used for one token mint, never stored; only this lab's server sees them.</p>
       <div className="grid2">
         <label className="field">Region
@@ -54,8 +53,8 @@ export default function Setup({ onCreated, say, defaults }) {
       </div>
       {check && (
         <div className="redirect" data-testid="setup-plan">
-          <p>Environment found. Setup will register this callback:</p>
-          <p className="row"><code>{check.callback}</code></p>
+          <p>Environment found. Setup will find or create the public native application <strong>MFA Admin MCP LAB sign-in</strong> with this placeholder redirect URI (PingOne requires one; nothing is served at it):</p>
+          <p className="row"><code data-testid="setup-redirect">{check.redirectUri}</code></p>
           {workerEnv && <p className="hint" data-testid="setup-workerenv">Using the worker credentials from <code>~/.config/mfa-admin-mcp/worker.env</code> — nothing to paste.</p>}
           <label className="field">Worker client id
             <input value={f.workerClientId} onChange={set("workerClientId")} required spellCheck="false" autoComplete="off" />

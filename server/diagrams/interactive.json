@@ -1,8 +1,8 @@
 {
   "schema": "diagram-studio/1",
   "id": "interactive",
-  "title": "Interactive admin sign-in (code + PKCE)",
-  "lede": "An administrator signs in through PingOne's authorization server; the tokens stay on this app's server. Simulated in Mock.",
+  "title": "Interactive admin sign-in (pi.flow + PKCE)",
+  "lede": "An administrator signs in through PingOne's native flow (pi.flow): this page shows the form, this app's server drives the flow, and the tokens stay on the server. Simulated in Mock.",
   "groups": {
     "client": {
       "label": "Your side",
@@ -77,36 +77,16 @@
     {
       "source": "browser",
       "target": "app",
-      "label": "request",
+      "label": "password, code (your form)",
       "handles": [
         "r1",
         "l1"
       ]
     },
     {
-      "source": "browser",
-      "target": "token",
-      "label": "sign in (redirect)",
-      "dashed": true,
-      "handles": [
-        "t1",
-        "l1"
-      ]
-    },
-    {
-      "source": "token",
-      "target": "browser",
-      "label": "back with a code",
-      "dashed": true,
-      "handles": [
-        "l2",
-        "t2"
-      ]
-    },
-    {
       "source": "app",
       "target": "token",
-      "label": "request token",
+      "label": "open the flow, send each step, redeem the code",
       "handles": [
         "t1",
         "b1"
@@ -115,7 +95,7 @@
     {
       "source": "token",
       "target": "app",
-      "label": "access token",
+      "label": "a code, then the access token",
       "handles": [
         "b2",
         "t2"
@@ -143,51 +123,52 @@
   "steps": [
     {
       "title": "You press Sign in",
-      "what": "You press Sign in. This app prepares a state, a nonce and a PKCE challenge and answers with the authorization URL.",
-      "edges": [
-        0
-      ]
-    },
-    {
-      "title": "Your browser goes to PingOne",
-      "what": "Your browser goes to PingOne's authorization server. This is the tool's connection to a third party, not a sign-in to this app.",
+      "what": "This app opens a PingOne native flow (response_mode=pi.flow) with a PKCE challenge and a nonce, and answers with the first step: the sign-in form on this page.",
       "edges": [
         1
       ]
     },
     {
-      "title": "PingOne sends the code back",
-      "what": "PingOne redirects back to the exact registered loopback address with a one-time code and the state.",
+      "title": "You sign in on this page",
+      "what": "Your password goes to this app, which passes it to PingOne and does not store or log it. PingOne may ask for a one-time code (SMS or email) in the same form.",
+      "edges": [
+        0,
+        1
+      ]
+    },
+    {
+      "title": "PingOne hands back a code",
+      "what": "The flow completes with a one-time authorization code. There is no redirect and no callback: the browser never leaves this page.",
       "edges": [
         2
       ]
     },
     {
-      "title": "This app exchanges the code",
-      "what": "This app checks the state, exchanges the code with the PKCE verifier, and validates the issuer and nonce.",
+      "title": "This app redeems the code",
+      "what": "This app exchanges the code with the PKCE verifier as a public client (no secret), and validates the id token's signature, issuer, audience and nonce.",
       "edges": [
-        3
+        1
       ]
     },
     {
       "title": "Tokens stay on the server",
       "what": "Access and refresh tokens are kept on the server. The page shows only who is signed in.",
       "edges": [
-        4
+        2
       ]
     },
     {
       "title": "Calls carry the admin's own token",
       "what": "Calls go to the hosted MCP server with the admin's own token, so the list matches that admin's roles.",
       "edges": [
-        5
+        3
       ]
     },
     {
       "title": "The server acts as that admin",
       "what": "The server acts on the admin plane with that admin's permissions.",
       "edges": [
-        6
+        4
       ]
     }
   ]

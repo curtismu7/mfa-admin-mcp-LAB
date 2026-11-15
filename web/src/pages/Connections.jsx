@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../api.js";
 import HealthCard from "../components/HealthCard.jsx";
+import LoginDialog from "../components/LoginDialog.jsx";
 import Setup from "./Setup.jsx";
-import { DEMO_ENV_ID, redirectUriFor } from "../lib/format.js";
+import { DEMO_ENV_ID } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
 
 const REGIONS = ["com", "eu", "asia", "ca"];
@@ -18,7 +19,7 @@ function Wizard({ onCreated, say, defaults }) {
   useEffect(() => { setF((x) => (x.envId || !defaults.envId ? x : withDefaults(x))); }, [defaults]); // eslint-disable-line react-hooks/exhaustive-deps
   const [err, setErr] = useState("");
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const uri = redirectUriFor();
+  const uri = defaults.piFlowRedirectUri || "";
   async function copy() {
     try { await navigator.clipboard.writeText(uri); say("Redirect URI copied."); } catch { say("Copy failed: select the redirect URI and copy it by hand."); }
   }
@@ -57,7 +58,7 @@ function Wizard({ onCreated, say, defaults }) {
           <fieldset className="seg-fs"><legend>Authorization server</legend>
             <p className="hint" data-testid="idp-hint">
               Who signs the tokens this connection uses. <strong>PingOne</strong> (the default): PingOne's hosted authorization server issues the access and id tokens.
-              <strong> PingFederate</strong>: an OAuth application on your own PingFederate instance runs the interactive sign-in (authorization code + PKCE) instead; the MCP endpoint stays the PingOne one unless you also change it.
+              <strong> PingFederate</strong>: an OAuth application on your own PingFederate instance runs the interactive sign-in (native flow, authorization code + PKCE) instead; the MCP endpoint stays the PingOne one unless you also change it.
             </p>
             <label><input type="radio" name="idp" checked={f.idp === "pingone"} onChange={() => setF({ ...f, idp: "pingone" })} /> PingOne authorization server (default)</label>
             <label><input type="radio" name="idp" checked={f.idp === "pf"} onChange={() => setF({ ...f, idp: "pf" })} /> PingFederate (your own instance, interactive sign-in)</label>
@@ -84,9 +85,9 @@ function Wizard({ onCreated, say, defaults }) {
             </div>
           ) : (
             <div className="redirect" data-testid="redirect-box">
-              <p><strong>Register this exact redirect URI</strong> on your OAuth application in PingOne:</p>
+              <p><strong>Use a public native application.</strong> Easiest: use <strong>Set up hosted PingOne MCP</strong> above, which creates one. By hand: an OpenID Connect native application with authorization code + PKCE, token endpoint authentication <strong>None</strong>, and this redirect URI (PingOne requires one; nothing is served at it):</p>
               <p className="row"><code data-testid="redirect-uri">{uri}</code> <button type="button" onClick={copy}>Copy</button></p>
-              <p className="hint">Signing in sends your browser to PingOne's authorization server. That is this tool's connection to a third-party server, not a sign-in to this app (it has no accounts). UNVERIFIED: the scopes and consent PingOne shows, and whether it accepts an http://localhost redirect (see docs/live-checks.md).</p>
+              <p className="hint">Signing in is PingOne's native flow (pi.flow): this app shows the sign-in form itself and sends nothing to a callback. An application that needs a client secret cannot be used here. UNVERIFIED: the scopes PingOne grants, and whether the hosted MCP server accepts the resulting token.</p>
             </div>
           )}
           <Field label="MCP endpoint shape" hint="Two shapes appear in our sources and we have not verified which one your tenant answers on.">
@@ -114,12 +115,12 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   const st = c.auth_status || {};
   async function act(fn, msg) { const r = await fn(); if (!r.ok) say(r.json?.message || "That did not work."); else if (msg) say(msg); onChange(); return r; }
   const [loginErr, setLoginErr] = useState("");
+  const [login, setLogin] = useState(null); // { idp, start } while the sign-in dialog is open
   async function signIn(idp) {
     setLoginErr("");
-    const r = await api.post(`/api/connections/${c.id}/login/start`, { idp, returnTo: window.location.pathname }); // returnTo: the callback returns here, not to "/" (the proxy sends that to the shelf)
+    const r = await api.post(`/api/connections/${c.id}/login/start`, { idp });
     if (!r.ok) { const m = r.json?.message || "Could not start sign-in."; say(m); setLoginErr(m); return; } // say() is a visually-hidden live region: show the reason beside the buttons too
-    say(idp === "pf" ? "Sending your browser to your PingFederate instance…" : "Sending your browser to PingOne's authorization server…");
-    window.location.assign(r.json.authorizeUrl);
+    setLogin({ idp, start: r.json });
   }
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
   const pfReady = c.offline === true || (c.idp === "pf" && Boolean(c.idpBaseUrl)); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
@@ -139,9 +140,9 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         {c.kind === "pingone" && c.auth === "interactive" && (st.signedIn
           ? <button type="button" onClick={() => act(() => api.post(`/api/connections/${c.id}/logout`), "Signed out; tokens cleared.")}>Sign out ({st.as})</button>
           : <span className="row">
-              <button type="button" onClick={() => signIn("pingone")} title="Interactive sign-in at PingOne's authorization server (authorization code + PKCE)">P1 login</button>
+              <button type="button" onClick={() => signIn("pingone")} title="Interactive sign-in at PingOne (native flow, authorization code + PKCE)">P1 login</button>
               <button type="button" data-testid="pf-login" disabled={!pfReady} onClick={() => signIn("pf")}
-                title={pfReady ? "Interactive sign-in at PingFederate (authorization code + PKCE)" : PF_NEEDS}>PF login</button>
+                title={pfReady ? "Interactive sign-in at PingFederate (native flow, authorization code + PKCE)" : PF_NEEDS}>PF login</button>
               {!pfReady && <small className="hint" data-testid="pf-hint">{PF_NEEDS}</small>}
             </span>)}
         {role && c.auth === "worker" && (
@@ -152,6 +153,8 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
       </div>
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}
+      {login && <LoginDialog conn={c} idp={login.idp} start={login.start} onClose={() => setLogin(null)}
+        onDone={(as) => { setLogin(null); say(`Signed in${as ? ` as ${as}` : ""}.`); onChange(); onTest(c.id, { modal: false }); }} />}
       <label className={`writes${c.allowWrites ? " writes--on" : ""}`}>
         <input type="checkbox" checked={c.allowWrites} onChange={(e) => setWrites(e.target.checked)} />
         Allow writes for this connection {c.allowWrites ? "(ON: write and destructive calls can run after confirmation)" : "(off: read tools only)"}
@@ -164,7 +167,7 @@ export default function Connections({ defaults, mode, conns, activeId, onSelect,
   const active = conns.find((c) => c.id === activeId);
   async function demo(kind) {
     const body = { kind: "pingone", offline: true, label: kind === "worker" ? "Mock demo (viewer/admin switch)" : "Mock demo (interactive sign-in)", region: "com", envId: DEMO_ENV_ID, endpointStyle: "api", auth: kind,
-      clientId: kind === "worker" ? "viewer-demo" : "admin-demo", ...(kind === "worker" ? { clientSecret: "demo-secret" } : { redirectUri: redirectUriFor() }) };
+      clientId: kind === "worker" ? "viewer-demo" : "admin-demo", ...(kind === "worker" ? { clientSecret: "demo-secret" } : {}) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { say(r.json?.message || "Could not add the demo."); return; }
     say("Mock demo added."); await reload(); onSelect(r.json.id); if (kind === "worker") runTest(r.json.id, { modal: false });
