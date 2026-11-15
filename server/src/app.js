@@ -339,6 +339,11 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
 
   // ---- recorded fixtures: real tool responses captured from a Live server, replayed by the mock
   app.get('/api/fixtures', (_req, res) => res.json({ count: fixtures.count(), fixtures: fixtures.all() }));
+  // One fixture by tool name: the UI shows it under a successful call ("Sample JSON-RPC response").
+  // No fixture is a normal answer (most tools have none), so it is 200 + null, not a 404 the browser logs.
+  app.get('/api/fixtures/:tool', h((req, res) => {
+    res.json(fixtures.get(req.params.tool)); // null when none
+  }, { noNetwork: true }));
   // Record takes the tool + result the UI just received. The connection is named in the body (this
   // route has no :id); it is only used for the label and the secret scrubbing, never for a call.
   app.post('/api/fixtures', h(async (req, res) => {
