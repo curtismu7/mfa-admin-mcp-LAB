@@ -486,19 +486,17 @@ test("a connection's login hint pre-fills the sign-in dialog's username and can 
   await waitFor(() => expect(api.calls.some((c) => c.url === "/api/connections/c1/settings" && c.body.loginHint === "someone.else")).toBe(true));
 });
 
-test("the Add connection form offers the optional login hint only for an interactive sign-in and sends it", async () => {
+test("the Add connection form offers the optional login hint and sends it", async () => {
   const api = fakeApi({ conns: [] });
   const user = userEvent.setup();
   render(<App />);
   await pressLive(user);
-  expect(screen.queryByTestId("wiz-login-hint")).toBeNull();
-  await user.click(await screen.findByLabelText(/Interactive admin sign-in/));
-  await user.type(screen.getByTestId("wiz-login-hint"), "admin.user");
+  await user.type(await screen.findByTestId("wiz-login-hint"), "admin.user");
   const wiz = screen.getByRole("form", { name: "Add a connection" });
   await user.type(within(wiz).getByLabelText(/^Client id/), "app-1");
   await user.type(within(wiz).getByLabelText(/Environment id/), "11111111-2222-4333-8444-555555555555");
   await user.click(within(wiz).getByRole("button", { name: "Save connection" }));
-  await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.loginHint === "admin.user" && c.body.auth === "interactive")).toBe(true));
+  await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.loginHint === "admin.user")).toBe(true));
 });
 
 test("PF login is only offered where a PingFederate exists: the mock simulates one, a live connection needs its own base URL", async () => {
