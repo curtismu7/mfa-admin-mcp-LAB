@@ -545,3 +545,41 @@ test("the Test connection dialog lists the actual tools grouped by safety class,
   expect(destructive).toHaveTextContent("<b>hostile</b>"); // shown as text
   expect(destructive.querySelector("b")).toBeNull();
 });
+
+test("a Live connection records its tool list for the mock demo; the result says how many were kept and skipped", async () => {
+  const st = fakeApi({ conns: [conn({ offline: false, kind: "custom", label: "Banking", url: "http://127.0.0.1:9/mcp" })], handlers: { "POST /api/connections/:id/record-tools": (b, s, json) => json(201, { ok: true, kept: 4, skipped: 1, total: 4 }) } });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  go("#/tools");
+  await user.click(await screen.findByTestId("record-tools"));
+  expect(await screen.findByText(/Recorded 4 tools \(1 skipped: bad name or oversized schema\)\. The mock demo now lists them\./)).toBeInTheDocument();
+  expect(st.calls.filter((c) => c.method === "POST" && c.url.endsWith("/record-tools"))).toHaveLength(1);
+});
+
+test("the mock demo says recorded tools are listed with synthetic replies, and Forget removes them and reloads the list", async () => {
+  let count = 2;
+  const st = fakeApi({ handlers: {
+    "GET /api/recorded-tools": (b, s, json) => json(200, { count, tools: [] }),
+    "DELETE /api/recorded-tools": (b, s, json) => { count = 0; return json(200, { ok: true, removed: 2 }); },
+  } });
+  const user = userEvent.setup();
+  go("#/tools");
+  render(<App />);
+  const card = await screen.findByTestId("recorded-tools");
+  await waitFor(() => expect(card).toHaveTextContent(/2 tools recorded from Live servers are listed here/));
+  expect(card).toHaveTextContent(/synthetic: true/);
+  expect(screen.queryByTestId("record-tools")).toBeNull(); // nothing to record from the mock itself
+  const listsBefore = st.calls.filter((c) => c.method === "GET" && c.url.endsWith("/tools")).length;
+  await user.click(screen.getByTestId("forget-recorded-tools"));
+  expect(await screen.findByText("Forgot 2 recorded tools.")).toBeInTheDocument();
+  await waitFor(() => expect(st.calls.filter((c) => c.method === "GET" && c.url.endsWith("/tools")).length).toBeGreaterThan(listsBefore));
+});
+
+test("the mock demo shows no recorded-tools card when nothing is recorded", async () => {
+  fakeApi({ handlers: { "GET /api/recorded-tools": (b, s, json) => json(200, { count: 0, tools: [] }) } });
+  go("#/tools");
+  render(<App />);
+  await screen.findByRole("heading", { name: /^MFA Settings/ });
+  expect(screen.queryByTestId("recorded-tools")).toBeNull();
+});
