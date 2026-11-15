@@ -156,6 +156,7 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
     const redirectUri = conn.redirectUri || PI_FLOW_REDIRECT_URI;
     const q = new URLSearchParams(withResource(conn, eff, { response_type: 'code', client_id: conn.clientId, redirect_uri: redirectUri, scope: 'openid offline_access', nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' }));
+    if (conn.loginHint) q.set('login_hint', conn.loginHint); // advisory for PingOne (the dialog still takes whatever is typed); PingFederate binds the flow to it
     let res; let flow = null;
     try {
       res = await fetchImpl(`${authorizeEndpoint}?${q}`, { headers: { Accept: profileOf(eff).accept }, redirect: 'manual', signal: AbortSignal.timeout(15_000) });
@@ -168,7 +169,7 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     const loginId = b64u(crypto.randomBytes(24));
     const login = { connId: conn.id, idp: eff, flowId: flow.id, cookies: mergeCookies({}, res), status: flow.status, verifier, nonce, redirectUri, attempts: 0, at: now() };
     logins.set(loginId, login);
-    try { return { loginId, ...(await settle(conn, login, flow)) }; } catch (e) { logins.delete(loginId); throw e; }
+    try { return { loginId, ...(conn.loginHint ? { usernameHint: conn.loginHint } : {}), ...(await settle(conn, login, flow)) }; } catch (e) { logins.delete(loginId); throw e; }
   }
 
   // Posts one step to the open flow. A non-2xx answer is returned, not thrown: callers branch on it.

@@ -169,6 +169,15 @@ test('interactive (pi.flow): a server that sets no session cookie gets none back
     assert.ok(seen.every((x) => x.url === `http://127.0.0.1:${new URL(mock.base).port}/${ENV_ID}/flows/flow-abc123XYZ-789`), 'the PingOne flow URL is <auth host>/<env>/flows/<id>');
   }
 });
+test('interactive (pi.flow): a connection login hint is sent as login_hint and echoed for the dialog; none is sent without one', async () => {
+  for (const hint of ['', 'admin.user@example.invalid']) {
+    const { rec, fetchImpl } = recording(); const a = mk({ fetchImpl });
+    const s = await a.startLogin(inter(hint ? { loginHint: hint } : {}));
+    const q = new URL(rec[0].url).searchParams;
+    assert.equal(q.get('login_hint'), hint || null);
+    assert.equal(s.usernameHint, hint || undefined);
+  }
+});
 test('interactive: the token endpoint refusing a public client explains that the app must be public', async () => {
   const fetchImpl = async (u, o) => (String(u).endsWith('/as/token') ? new Response(JSON.stringify({ error: 'invalid_client', error_description: 'Request denied: Unsupported authentication method' }), { status: 401 }) : fetch(u, o));
   const a = createAuth({ resolveBase: () => mock.base, fetchImpl });

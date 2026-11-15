@@ -12,7 +12,7 @@ const deviceName = (d) => `${LABEL[d.type] || d.type.toLowerCase()}${d.nickname 
 export default function LoginDialog({ conn, idp, start, onClose, onDone }) {
   // `start` is the first answer of login/start: { loginId, step, devices?, mockLogin? }.
   const [s, setS] = useState(start);
-  const [f, setF] = useState({ username: start.mockLogin?.username || "", password: start.mockLogin?.password || "", otp: start.mockLogin?.otp || "" });
+  const [f, setF] = useState({ username: start.mockLogin?.username || start.usernameHint || "", password: start.mockLogin?.password || "", otp: start.mockLogin?.otp || "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));

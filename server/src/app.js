@@ -178,7 +178,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     catch (err) { res.status(400).json({ error: 'bad_request', message: scrub(err.message, [body.token]) }); }
   });
   app.delete('/api/connections/:id', h((_req, res, conn) => { auth.logout(conn); store.remove(conn.id); health.refresh(); res.json({ ok: true }); }, { noNetwork: true }));
-  app.post('/api/connections/:id/settings', h((req, res, conn) => res.json(view(store.update(conn.id, { allowWrites: req.body?.allowWrites }))), { noNetwork: true }));
+  app.post('/api/connections/:id/settings', h((req, res, conn) => res.json(view(store.update(conn.id, { allowWrites: req.body?.allowWrites, loginHint: req.body?.loginHint }))), { noNetwork: true }));
 
   // ---- tools, health card
   async function listAnnotated(conn) { return annotate(await clientFor(conn).listTools()); }

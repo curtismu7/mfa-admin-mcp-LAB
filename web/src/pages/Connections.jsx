@@ -7,7 +7,7 @@ import { DEMO_ENV_ID } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
 
 const REGIONS = ["com", "eu", "asia", "ca"];
-const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", endpointStyle: "mcp-host", idp: "pingone", idpBaseUrl: "", clientId: "", url: "", authHeader: "Authorization", token: "" };
+const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", endpointStyle: "mcp-host", idp: "pingone", idpBaseUrl: "", loginHint: "", clientId: "", url: "", authHeader: "Authorization", token: "" };
 
 function Field({ label, children, hint }) {
   return <label className="field">{label}{children}{hint && <small>{hint}</small>}</label>;
@@ -26,7 +26,7 @@ function Wizard({ onCreated, say, defaults }) {
   async function submit(e) {
     e.preventDefault(); setErr("");
     const body = f.kind === "pingone"
-      ? { kind: "pingone", label: f.label, region: f.region, envId: f.envId, endpointStyle: f.endpointStyle, idp: f.idp, ...(f.idp === "pf" ? { idpBaseUrl: f.idpBaseUrl } : {}), clientId: f.clientId, redirectUri: uri }
+      ? { kind: "pingone", label: f.label, region: f.region, envId: f.envId, endpointStyle: f.endpointStyle, idp: f.idp, ...(f.idp === "pf" ? { idpBaseUrl: f.idpBaseUrl } : {}), clientId: f.clientId, ...(f.loginHint ? { loginHint: f.loginHint } : {}), redirectUri: uri }
       : { kind: f.kind, label: f.label, url: f.url, ...(f.token ? { authHeader: f.authHeader, token: f.token } : {}) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { setErr(r.json?.message || "Could not save the connection."); return; }
@@ -75,6 +75,9 @@ function Wizard({ onCreated, say, defaults }) {
             <p className="row"><code data-testid="redirect-uri">{uri}</code> <button type="button" onClick={copy}>Copy</button></p>
             <p className="hint">Signing in is PingOne's native flow (pi.flow): this app shows the sign-in form itself and sends nothing to a callback. An application that needs a client secret cannot be used here. UNVERIFIED: the scopes PingOne grants, and whether the hosted MCP server accepts a token from this lab's own sign-in application (docs/live-checks.md).</p>
           </div>
+          <Field label="Sign-in username (login_hint, optional)" hint="Sent to the authorization server and pre-filled in the sign-in dialog. You can still type another. PingFederate binds the sign-in to it.">
+            <input value={f.loginHint} onChange={set("loginHint")} maxLength={256} spellCheck="false" autoComplete="off" data-testid="wiz-login-hint" />
+          </Field>
           <Field label="MCP endpoint shape" hint="Ping's MCP docs name the mcp.pingone shape (the default). The api.pingone shape comes from the pingone-mcp skill and is UNVERIFIED.">
             <select value={f.endpointStyle} onChange={set("endpointStyle")}><option value="mcp-host">mcp.pingone.{"{region}"}/admin/{"{envId}"}/mcp (documented by Ping, default)</option><option value="api">api.pingone.{"{region}"}/v1/environments/{"{envId}"}/mcp (pingone-mcp skill, UNVERIFIED)</option></select>
           </Field>
@@ -107,6 +110,8 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
     if (!r.ok) { const m = r.json?.message || "Could not start sign-in."; say(m); setLoginErr(m); return; } // say() is a visually-hidden live region: show the reason beside the buttons too
     setLogin({ idp, start: r.json });
   }
+  const [hint, setHint] = useState(c.loginHint || "");
+  const saveHint = (e) => { e.preventDefault(); act(() => api.post(`/api/connections/${c.id}/settings`, { loginHint: hint }), hint.trim() ? `Sign-in username hint saved for ${c.label}.` : `Sign-in username hint cleared for ${c.label}.`); };
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
   const pfReady = c.offline === true || (c.idp === "pf" && Boolean(c.idpBaseUrl)); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
   return (
@@ -132,6 +137,14 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
       </div>
       {c.legacyWorker && <p className="notice" data-state="bad" data-testid="legacy-worker">Saved by an older build for a worker (client_credentials) token, which the hosted PingOne MCP server does not take: it needs a user sign-in. Delete this connection and add a PingOne one (Setup creates the sign-in application).</p>}
+      {c.kind === "pingone" && c.auth === "interactive" && !st.signedIn && (
+        <form className="row wrap" onSubmit={saveHint} aria-label="Sign-in username hint">
+          <label className="field">Sign-in username (login_hint, optional)
+            <input value={hint} onChange={(e) => setHint(e.target.value)} maxLength={256} spellCheck="false" autoComplete="off" data-testid="card-login-hint" />
+          </label>
+          <button type="submit" data-testid="card-login-hint-save" disabled={hint.trim() === (c.loginHint || "")}>Save hint</button>
+        </form>
+      )}
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}
       {login && <LoginDialog conn={c} idp={login.idp} start={login.start} onClose={() => setLogin(null)}
         onDone={(as) => { setLogin(null); say(`Signed in${as ? ` as ${as}` : ""}.`); onChange(); onTest(c.id, { modal: false }); }} />}
