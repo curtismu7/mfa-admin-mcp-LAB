@@ -1,6 +1,10 @@
 import React from "react";
 import { pretty } from "../lib/format.js";
 import FloatingDialog from "../floating-dialog/FloatingDialog";
+import { Untrusted } from "../lib/Untrusted.jsx";
+import { ClassBadge } from "../pages/Tools.jsx";
+
+const CLASSES = ["read", "write", "destructive"];
 
 // The "Test connection" result, as a modal: the verdict up front, then what the
 // server answered (tool counts, error class and message) in the same frame.
@@ -20,7 +24,20 @@ export default function TestResultModal({ conn, test, busy, onClose }) {
             ? <>Connected. The server listed <strong data-testid="test-count">{test.toolCount}</strong> tools.</>
             : <>The connection did not work.</>}</p>
           {ok && test.byClass && (
-            <p>By safety class: {test.byClass.read} read, {test.byClass.write} write, {test.byClass.destructive} destructive.</p>
+            <p data-testid="test-totals">Total <strong>{test.toolCount}</strong>: {test.byClass.read} read, {test.byClass.write} write, {test.byClass.destructive} destructive.</p>
+          )}
+          {ok && Array.isArray(test.tools) && test.tools.length > 0 && (
+            <div className="test-tools" data-testid="test-tools" role="region" aria-label="Tools the server listed" tabIndex={0}>
+              {CLASSES.map((cls) => {
+                const items = test.tools.filter((t) => t.class === cls);
+                return items.length === 0 ? null : (
+                  <section key={cls} data-testid={`test-tools-${cls}`}>
+                    <h3>{cls} ({items.length})</h3>
+                    <ul>{items.map((t) => <li key={t.name}><Untrusted text={t.name} /> <ClassBadge t={t} /></li>)}</ul>
+                  </section>
+                );
+              })}
+            </div>
           )}
           {!ok && (
             <div>
