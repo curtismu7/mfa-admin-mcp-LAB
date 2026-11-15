@@ -9,7 +9,7 @@ import net from 'node:net';
 import test from 'node:test';
 import { installNetguard, isActive, isAllowed, netguardSelfTest, permit } from '../src/netguard.js';
 import { liveHosts } from '../src/urls.js';
-import { ENV_ID, startApp, workerConn } from './helpers.js';
+import { addSignedIn, ENV_ID, mockConn, signIn, startApp } from './helpers.js';
 
 test('self-test: every route out is refused and recorded, none reaches the network', async () => {
   const r = await netguardSelfTest();
@@ -76,7 +76,7 @@ test('a permit allows exactly one named host, only while held; loopback never ne
 });
 
 test('liveHosts: the mock needs none; PingOne needs the token host and the MCP host of its region; a custom server only its own host', () => {
-  assert.deepEqual(liveHosts(workerConn()), []);
+  assert.deepEqual(liveHosts(mockConn()), []);
   assert.deepEqual(liveHosts({ kind: 'pingone', region: 'eu', envId: ENV_ID, endpointStyle: 'api' }), ['auth.pingone.eu', 'api.pingone.eu']);
   assert.deepEqual(liveHosts({ kind: 'pingone', region: 'com', envId: ENV_ID, endpointStyle: 'mcp-host' }), ['auth.pingone.com', 'mcp.pingone.com']);
   assert.deepEqual(liveHosts({ kind: 'custom', url: 'https://mcp.example/mcp' }), ['mcp.example']);
@@ -84,27 +84,32 @@ test('liveHosts: the mock needs none; PingOne needs the token host and the MCP h
 });
 
 test('Live holds a permit for each host of the connection in use while an operation runs, and gives it back; Mock holds none', async () => {
-  const seen = [];
+  const seen = []; let s;
   const fetchImpl = async (url, init) => {
-    const host = new URL(url).hostname;
+    const u = new URL(url); const host = u.hostname;
     if (host === '127.0.0.1') return fetch(url, init); // the in-process mock, on loopback: the real fetch, under the guard
     seen.push({ host, target: isAllowed(host), stranger: isAllowed('stranger.example') });
-    const body = host.startsWith('auth.') ? { access_token: 'tok-abcdef', expires_in: 3600 } : { jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'listApplications', description: 'x', inputSchema: { type: 'object', properties: {} } }] } };
+    // The PingOne sign-in (pi.flow) is answered by the in-process mock: the request is checked for its permit above, then handed over.
+    if (host.startsWith('auth.')) return fetch(`${s.mock.base}${u.pathname}${u.search}`, init);
+    const body = { jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'listApplications', description: 'x', inputSchema: { type: 'object', properties: {} } }] } };
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   const guard = installNetguard();
-  const s = await startApp({ fetchImpl });
+  s = await startApp({ fetchImpl });
+  s.mock.config.issOverride = `https://auth.pingone.com/${ENV_ID}/as`; // the mock signs for the live issuer it stands in for
   try {
     const custom = (await s.call('POST', '/api/connections', { kind: 'custom', label: 'c', url: 'https://mcp.example/mcp' })).json;
     assert.equal((await s.call('POST', `/api/connections/${custom.id}/test`)).json.ok, true);
-    const p1 = (await s.call('POST', '/api/connections', { kind: 'pingone', region: 'com', envId: ENV_ID, auth: 'worker', clientId: 'w1', clientSecret: 'sentinel-secret-1', endpointStyle: 'api' })).json;
+    const p1 = (await s.call('POST', '/api/connections', { kind: 'pingone', region: 'com', envId: ENV_ID, clientId: 'native-1' })).json; // endpointStyle: the mcp-host default
+    await signIn(s, p1.id);
     assert.equal((await s.call('POST', `/api/connections/${p1.id}/test`)).json.ok, true);
-    assert.deepEqual([...new Set(seen.map((x) => x.host))], ['mcp.example', 'auth.pingone.com', 'api.pingone.com'], 'a custom server handshakes first: several calls, one host');
+    assert.deepEqual([...new Set(seen.map((x) => x.host))], ['mcp.example', 'auth.pingone.com', 'mcp.pingone.com'], 'a custom server handshakes first: several calls, one host');
     for (const x of seen) { assert.equal(x.target, true, `${x.host} is permitted while its operation runs`); assert.equal(x.stranger, false, 'no other host is'); }
-    for (const h of ['mcp.example', 'auth.pingone.com', 'api.pingone.com']) assert.equal(isAllowed(h), false, `${h} is released afterwards`);
+    for (const h of ['mcp.example', 'auth.pingone.com', 'mcp.pingone.com']) assert.equal(isAllowed(h), false, `${h} is released afterwards`);
+    s.mock.config.issOverride = null;
     // Mock: nothing permitted, and a whole mock session leaves no attempt.
     seen.length = 0;
-    const m = (await s.call('POST', '/api/connections', workerConn({ clientId: 'admin-demo' }))).json;
+    const m = await addSignedIn(s);
     assert.equal((await s.call('POST', `/api/connections/${m.id}/test`)).json.ok, true);
     assert.equal(seen.length, 0, 'the mock reaches only loopback: no host is ever permitted for it');
     assert.deepEqual(guard.attempts, [], 'zero outbound attempts');

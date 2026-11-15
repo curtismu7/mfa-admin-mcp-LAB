@@ -10,45 +10,45 @@ Press P (or the Present button) for presenter mode: larger text, and the banner 
 
 Page: Tools.
 
-- Goal: Lena at the company connects an assistant to PingOne's hosted MCP server and expects the full admin tool set. She sees a short list.
-- Obstacle: The tool list is gated by the admin roles of the identity that connects. A short list looks like a broken server, so people debug the wrong thing.
-- Control: Mark checks the roles on the connecting identity first. Role gating is the control: a viewer identity never sees write tools, whatever the client asks for.
+- Goal: Lena at the company signs in to PingOne's hosted MCP server as an administrator and expects the full admin tool set. She sees a short list.
+- Obstacle: The tool list is gated by the admin roles of the user who signs in. A short list looks like a broken server, so people debug the wrong thing.
+- Control: Mark checks the admin roles of the signed-in user first. Role gating is the control: a user with a read-only role never sees write tools, whatever the client asks for.
 
-### Step 1. Connect as a viewer
+### Step 1. Sign in as a viewer
 
-Do: In the mock demo connection pick the viewer role and press Test connection. The health card counts the tools and says in words that a short list usually means missing roles.
+Do: Add the mock demo, press P1 login and sign in as mock.viewer (the password and code are filled in). The card tests the connection: the health card counts the tools and says in words that a short list usually means missing roles.
 
-Say: "The server is fine. The identity is what the server is looking at."
+Say: "The server is fine. The signed-in user is what the server is looking at."
 
-Why it matters: Role gating is per identity, so the same server shows different tools to different callers (pingone-mcp skill).
+Why it matters: Role gating is per user, so the same server shows different tools to different administrators (Ping's MCP docs: the tools a user sees depend on their admin roles).
 
 ### Step 2. Read the list
 
-Do: Open Tools. Every tool the viewer sees carries a read badge. No write tool is listed, so none can be called.
+Do: Open Tools. Every tool mock.viewer sees carries a read badge. No write tool is listed, so none can be called.
 
 Say: "No write tool in the list means no write path, not a hidden switch."
 
-Why it matters: A tool that is not listed cannot be called: this app also refuses a call to a tool the identity does not see.
+Why it matters: A tool that is not listed cannot be called: this app also refuses a call to a tool the signed-in user does not see.
 
-### Step 3. Switch to admin
+### Step 3. Sign in as an admin
 
-Do: Switch the demo role to admin and test again. The count grows and write and destructive tools appear, each labelled with why it was classed that way.
+Do: Sign out, then sign in again as mock.admin. The count grows and write and destructive tools appear, each labelled with why it was classed that way.
 
-Say: "Same server, same URL, a bigger list. Only the roles changed."
+Say: "Same server, same URL, a bigger list. Only the user, and so the roles, changed."
 
 Why it matters: The fix for a short list is a role assignment in PingOne, not a retry loop.
 
 ### Step 4. Check the real numbers yourself
 
-Do: On a real tenant the count depends on your roles. The hosted PingOne MCP server exposed 114 tools to a fully privileged worker when this lab was built (2026-11-12, including the MFA administration set). That figure is not verified by this app.
+Do: On a real tenant the count depends on the roles of the administrator who signs in. When this lab was built (2026-11-12, before the hosted server required a user sign-in) it listed 114 tools, including the MFA administration set. What a fully privileged administrator sees today is not verified by this app.
 
 Say: "I will quote a number only when I have measured it on our tenant."
 
 Why it matters: Numbers from a document are a starting point; the owner checks listed in docs/live-checks.md settle it.
 
-Proof (allowed path): The viewer list contains read tools only; the admin list contains write and destructive tools as well.
+Proof (allowed path): The mock.viewer list contains read tools only; the mock.admin list contains write and destructive tools as well.
 
-Proof (blocked path): As a viewer, a call to a write tool is refused because the tool is not in the list.
+Proof (blocked path): Signed in as mock.viewer, a call to a write tool is refused because the tool is not in the list.
 
 Closing line: "A short tool list is a roles question first, a server question last."
 
@@ -112,6 +112,6 @@ Closing line: "Nothing writes until someone has looked at exactly what it will w
 
 ## Caveats to say out loud
 
-- Nothing here was run against a real PingOne tenant. Whether the hosted server accepts a worker (client_credentials) token, which endpoint shape a tenant answers on, and the scopes and consent of the interactive login are UNVERIFIED (docs/live-checks.md).
+- The hosted PingOne MCP server takes an administrator's own sign-in, and the tools listed follow that user's admin roles (owner statement and Ping's MCP docs, 2026-11-15). Nothing in this lab was run against a real tenant: whether the hosted server accepts a token from the lab's own public sign-in application, and the scopes and consent of that sign-in, are UNVERIFIED (docs/live-checks.md).
 - The mock tool catalog is an illustrative sample, not a recording. The read, write and destructive classes are a heuristic (docs/classification.md); unknown is treated as a write.
 - A clean scan of a tool list is not proof of safety.

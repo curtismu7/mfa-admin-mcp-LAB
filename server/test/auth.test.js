@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import http from 'node:http';
 import test, { after, afterEach, before, beforeEach } from 'node:test';
-import { createAuth, pkceChallenge, PI_FLOW_REDIRECT_URI } from '../src/auth.js';
+import { createAuth, LEGACY_WORKER, pkceChallenge, PI_FLOW_REDIRECT_URI } from '../src/auth.js';
 import { createMock, MOCK_LOGIN } from '../src/mock.js';
 import { ENV_ID } from './helpers.js';
 import { installNetguard } from './netguard.js';
@@ -11,9 +10,8 @@ const guard = installNetguard();
 const mock = createMock();
 before(() => mock.start());
 after(async () => { await mock.stop(); assert.deepEqual(guard.attempts, [], 'zero outbound attempts'); guard.restore(); });
-beforeEach(() => { mock.config.expiresIn = 3600; mock.config.issOverride = null; mock.config.nonceOverride = null; mock.config.forgeIdToken = false; mock.config.audOverride = null; mock.config.afterPassword = null; mock.config.resumeAsJson = false; mock.config.flowSteps.length = 0; mock.tokens.clear(); mock.refreshes.clear(); });
+beforeEach(() => { mock.config.expiresIn = 3600; mock.config.issOverride = null; mock.config.nonceOverride = null; mock.config.forgeIdToken = false; mock.config.audOverride = null; mock.config.afterPassword = null; mock.config.resumeAsJson = false; mock.config.flowSteps.length = 0; mock.config.resources.length = 0; mock.tokens.clear(); mock.refreshes.clear(); });
 
-const worker = (o = {}) => ({ id: 'w1', kind: 'pingone', auth: 'worker', region: 'com', envId: ENV_ID, clientId: 'admin-app', clientSecret: 'sekrit-worker', tokenAuthMethod: 'basic', ...o });
 const inter = (o = {}) => ({ id: 'i1', kind: 'pingone', auth: 'interactive', region: 'com', envId: ENV_ID, clientId: 'admin-app', ...o });
 const mk = (extra = {}) => createAuth({ resolveBase: () => mock.base, ...extra });
 const PW = MOCK_LOGIN.password;
@@ -30,25 +28,45 @@ async function signIn(a, c, username = MOCK_LOGIN.username) {
 test('PKCE S256 challenge is the base64url sha256 of the verifier', () => {
   assert.equal(pkceChallenge('abc'), crypto.createHash('sha256').update('abc').digest('base64url'));
 });
-test('worker: mints with Basic or body secret, caches, re-mints inside the expiry margin', async () => {
-  for (const method of ['basic', 'post']) {
-    mock.tokens.clear();
-    const a = mk(); const c = worker({ tokenAuthMethod: method });
-    const t1 = await a.accessToken(c); assert.equal(await a.accessToken(c), t1); assert.equal(mock.tokens.size, 1);
+test('a connection saved as a worker by an older build is refused with a clear message: no token is minted, no sign-in opens, nothing is sent', async () => {
+  const { rec, fetchImpl } = recording(); const a = mk({ fetchImpl });
+  const legacy = { id: 'w1', kind: 'pingone', auth: 'worker', region: 'com', envId: ENV_ID, clientId: 'old-worker', clientSecret: 'sekrit-worker', tokenAuthMethod: 'basic' };
+  await assert.rejects(a.accessToken(legacy), (e) => e.code === 'worker_unsupported' && e.message === LEGACY_WORKER && /user sign-in/.test(e.message) && !e.message.includes('sekrit'));
+  await assert.rejects(a.startLogin(legacy), (e) => e.code === 'worker_unsupported');
+  assert.equal(await a.renew(legacy), false);
+  assert.deepEqual(a.status(legacy), { signedIn: false });
+  assert.deepEqual(rec, [], 'nothing was sent to any server');
+});
+test('the mock authorization server has no client_credentials grant: a worker gets no token from it', async () => {
+  const r = await fetch(`${mock.base}/${ENV_ID}/as/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${Buffer.from('admin-app:s').toString('base64')}` }, body: 'grant_type=client_credentials' });
+  assert.equal(r.status, 400); assert.equal((await r.json()).error, 'unsupported_grant_type');
+  assert.equal(mock.tokens.size, 0);
+});
+test('the role comes from the signed-in mock account, not the client id: mock.viewer is a viewer, the others are admins', async () => {
+  const roleOf = async (user, clientId = 'admin-app') => { const a = mk(); const c = inter({ clientId }); const done = await signIn(a, c, user); return { as: done.as, role: mock.tokens.get(await a.accessToken(c)).role }; };
+  assert.deepEqual(await roleOf(MOCK_LOGIN.viewer), { as: 'mock-viewer-user', role: 'viewer' });
+  assert.deepEqual(await roleOf(MOCK_LOGIN.viewer, 'admin-demo'), { as: 'mock-viewer-user', role: 'viewer' }, 'an admin-sounding client id changes nothing');
+  assert.deepEqual(await roleOf(MOCK_LOGIN.username, 'viewer-demo'), { as: 'mock-admin-user', role: 'admin' }, 'a viewer-sounding client id changes nothing');
+  for (const u of ['mock.nomfa', 'mock.multi']) assert.equal((await roleOf(u)).role, 'admin', u);
+});
+test('pi.flow sends the RFC 8707 resource (the MCP URL of the connection) on the authorize, the code redemption and the refresh; the mock AS receives it', async () => {
+  // offline: the in-process mock's MCP URL
+  const { rec, fetchImpl } = recording(); mock.config.expiresIn = 30; // inside the refresh margin, so the next use refreshes
+  const a = mk({ fetchImpl }); const c = inter();
+  await signIn(a, c); await a.accessToken(c);
+  const want = `${mock.base}/mcp/${ENV_ID}`;
+  assert.equal(new URL(rec.find((r) => r.url.includes('/as/authorize')).url).searchParams.get('resource'), want);
+  assert.deepEqual(rec.filter((r) => r.url.endsWith('/as/token')).map((r) => [new URLSearchParams(r.body).get('grant_type'), new URLSearchParams(r.body).get('resource')]), [['authorization_code', want], ['refresh_token', want]]);
+  assert.deepEqual(mock.config.resources, [{ at: 'authorize', resource: want }, { at: 'authorization_code', resource: want }, { at: 'refresh_token', resource: want }]);
+  // a live connection: the hosted MCP URL for its region and endpoint style (mcp-host by default). The requests are answered by the mock.
+  const live = 'https://auth.pingone.eu';
+  const forward = (u, o) => fetch(String(u).replace(live, mock.base), o);
+  mock.config.issOverride = `${live}/${ENV_ID}/as`;
+  for (const [style, url] of [[undefined, `https://mcp.pingone.eu/admin/${ENV_ID}/mcp`], ['mcp-host', `https://mcp.pingone.eu/admin/${ENV_ID}/mcp`], ['api', `https://api.pingone.eu/v1/environments/${ENV_ID}/mcp`]]) {
+    mock.config.resources.length = 0;
+    await signIn(createAuth({ resolveBase: () => null, fetchImpl: forward }), inter({ region: 'eu', ...(style ? { endpointStyle: style } : {}) }));
+    assert.deepEqual(mock.config.resources.map((x) => x.resource), [url, url], style || 'default');
   }
-  mock.tokens.clear(); mock.config.expiresIn = 30; // inside the 60 s margin: every call re-mints
-  const a = mk(); const c = worker();
-  assert.notEqual(await a.accessToken(c), await a.accessToken(c));
-});
-test('worker: a wrong secret fails without echoing it', async () => {
-  mock.clients.set('strict-app', { secret: 'right', role: 'admin' });
-  const c = worker({ clientId: 'strict-app', clientSecret: 'wrong-secret-value' });
-  await assert.rejects(mk().accessToken(c), (e) => e.code === 'token_request_failed' && !e.message.includes('wrong-secret-value'));
-  mock.clients.delete('strict-app');
-});
-test('worker: renew after a rejection mints a new token', async () => {
-  const a = mk(); const c = worker(); const t = await a.accessToken(c);
-  mock.revoke(t); assert.equal(await a.renew(c), true); assert.notEqual(await a.accessToken(c), t);
 });
 test('interactive (pi.flow): the flow is opened with code + PKCE S256 + nonce and no redirect, steps carry the vendor content types, status shows sub only, logout clears', async () => {
   const { rec, fetchImpl } = recording(); const a = mk({ fetchImpl }); const c = inter();
@@ -66,6 +84,7 @@ test('interactive (pi.flow): the flow is opened with code + PKCE S256 + nonce an
   assert.deepEqual(a.status(c), { signedIn: false }, 'a password alone signs nobody in');
   const done = await a.loginStep(c, { loginId: s.loginId, action: 'otp', otp: MOCK_LOGIN.otp });
   assert.deepEqual(done, { step: 'done', as: 'mock-admin-user' });
+  assert.ok(new URL(rec[0].url).searchParams.get('resource'), 'the authorize names the resource');
   assert.deepEqual(mock.config.flowSteps.map((x) => x.contentType), ['application/vnd.pingidentity.usernamePassword.check+json', 'application/vnd.pingidentity.otp.check+json']);
   const tokenCall = rec.find((r) => r.url.endsWith('/as/token'));
   assert.equal(new URLSearchParams(tokenCall.body).get('client_secret'), null, 'a public client sends no secret');
@@ -198,12 +217,14 @@ test('mock AS self-test: a flow step needs the session cookie, a redirect-style 
   const wrong = await fetch(`${mock.base}/${ENV_ID}/as/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: PI_FLOW_REDIRECT_URI, client_id: 'admin-app', code_verifier: 'wrong-verifier' }) });
   assert.equal(wrong.status, 400);
 });
-test('worker: a token endpoint error that echoes the secret is scrubbed from the thrown message', async () => {
-  const SECRET = 'echoed-worker-secret-4455';
-  const stub = http.createServer((_q, r) => { r.writeHead(500, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ error: 'server_error', error_description: `bad secret ${SECRET} for client` })); });
-  await new Promise((r) => stub.listen(0, '127.0.0.1', r));
-  try {
-    const a = createAuth({ resolveBase: () => `http://127.0.0.1:${stub.address().port}` });
-    await assert.rejects(a.accessToken(worker({ clientSecret: SECRET })), (e) => e.code === 'token_request_failed' && !e.message.includes(SECRET) && e.message.includes('[redacted]'));
-  } finally { stub.close(); }
+test('a token endpoint error that echoes what it was sent (the code and the PKCE verifier) is scrubbed from the thrown message', async () => {
+  let sent;
+  const fetchImpl = async (u, o) => {
+    if (!String(u).endsWith('/as/token')) return fetch(u, o);
+    sent = new URLSearchParams(o.body);
+    return new Response(JSON.stringify({ error: 'server_error', error_description: `bad code ${sent.get('code')} with verifier ${sent.get('code_verifier')}` }), { status: 500 });
+  };
+  const a = createAuth({ resolveBase: () => mock.base, fetchImpl });
+  await assert.rejects(signIn(a, inter()), (e) => e.code === 'token_request_failed' && !e.message.includes(sent.get('code')) && !e.message.includes(sent.get('code_verifier')) && e.message.includes('[redacted]'));
+  assert.deepEqual(a.status(inter()), { signedIn: false });
 });

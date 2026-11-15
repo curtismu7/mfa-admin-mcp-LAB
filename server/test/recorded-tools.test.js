@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
-import { createMock, SYNTHETIC_NOTE } from '../src/mock.js';
-import { startApp, tmpDir, workerConn } from './helpers.js';
+import { createMock, MOCK_LOGIN, SYNTHETIC_NOTE } from '../src/mock.js';
+import { addSignedIn, mockToken, startApp, tmpDir } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -37,8 +37,8 @@ before(async () => {
   await new Promise((r) => stub.listen(0, '127.0.0.1', r));
   s = await startApp({ dir: tmpDir() });
   live = (await s.call('POST', '/api/connections', { kind: 'custom', label: 'banking stub', url: `http://127.0.0.1:${stub.address().port}/mcp`, token: SECRET })).json;
-  admin = (await s.call('POST', '/api/connections', workerConn({ label: 'mock admin' }))).json;
-  viewer = (await s.call('POST', '/api/connections', workerConn({ label: 'mock viewer', clientId: 'viewer-demo' }))).json;
+  admin = await addSignedIn(s, { label: 'mock admin' });
+  viewer = await addSignedIn(s, { label: 'mock viewer', user: MOCK_LOGIN.viewer });
 });
 after(async () => { await s.close(); stub.close(); assert.deepEqual(guard.attempts, [], 'zero outbound attempts'); guard.restore(); });
 
@@ -105,8 +105,8 @@ test('the mock answers a catalog tool it has no data for with the synthetic reco
   await m.start();
   try {
     const post = (p, body, headers) => fetch(`${m.base}${p}`, { method: 'POST', headers, body }).then((x) => x.json());
-    const tok = await post('/env/as/token', 'grant_type=client_credentials&client_id=admin-x&client_secret=y', { 'Content-Type': 'application/x-www-form-urlencoded' });
-    const r = await post('/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'syncTenantWidgets', arguments: { environmentId: 'e' } } }), { Authorization: `Bearer ${tok.access_token}`, 'Content-Type': 'application/json' });
+    const tok = await mockToken(m.base);
+    const r = await post('/mcp', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'syncTenantWidgets', arguments: { environmentId: 'e' } } }), { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' });
     const out = JSON.parse(r.result.content[0].text);
     assert.deepEqual(out, { tool: 'syncTenantWidgets', synthetic: true, note: SYNTHETIC_NOTE, arguments: { environmentId: 'e' } });
   } finally { await m.stop(); }

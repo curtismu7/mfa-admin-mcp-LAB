@@ -54,7 +54,7 @@ test('README follows the README standard: title ends in LAB, plain Tier, Repo an
 test('rule 17: the diagram is diagram-studio/1 data in server/diagrams, validated and served by name, copied into the image, and the page builds no nodes or edges itself', () => {
   const dir = path.join(root, 'server', 'diagrams');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
-  assert.deepEqual(files, ['interactive.json', 'worker.json']);
+  assert.deepEqual(files, ['interactive.json']);
   for (const f of files) assert.equal(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).schema, 'diagram-studio/1', f);
   assert.match(read('Dockerfile'), /^COPY server\/diagrams server\/diagrams$/m, 'the image carries the diagram files');
   assert.match(read('server/src/app.js'), /createDiagrams\(/);

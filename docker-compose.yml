@@ -23,7 +23,7 @@ services:
       MFA_ADMIN_MCP_MODE: ${MFA_ADMIN_MCP_MODE:-mock}
     volumes:
       - p1mcp-data:/data
-      # read-only: the Management worker the setup card and the PingOne preset read
+      # read-only: the Management worker the setup card reads (Management API only, never the MCP server)
       # (PINGONE_CLIENT_ID/SECRET, optional PINGONE_ENV_ID/REGION); never written.
       - ${MFAADM_WORKER_ENV_FILE:-~/.config/mfa-admin-mcp/worker.env}:/config/worker.env:ro
     read_only: true

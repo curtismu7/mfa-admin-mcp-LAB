@@ -1,6 +1,7 @@
 // Tenant setup: use a Management worker token (pasted once, never stored) to
 // find or create the OAuth app the lab's interactive sign-in needs, and hand
-// back the values for a saved connection.
+// back the values for a saved connection. The worker talks to the Management API
+// only; the saved connection is a user sign-in to the hosted MCP server.
 //
 // What the hosted PingOne MCP actually needs (from the family's measurements,
 // demo_api_server/services/mcpPingOneHttpAdapter.js): an authorization-code +
@@ -19,11 +20,13 @@ import { liveRefusal } from './config.js';
 import { permit } from './netguard.js';
 import { validEnvId, validRegion } from './urls.js';
 
-// The Management worker for setup lives in the same local file the "Add PingOne worker"
-// preset uses (MFAADM_WORKER_ENV_FILE, default ~/.config/mfa-admin-mcp/worker.env):
+// The Management worker for setup lives in a local file outside the repo
+// (MFAADM_WORKER_ENV_FILE, default ~/.config/mfa-admin-mcp/worker.env):
 // PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET, and optionally PINGONE_ENV_ID / PINGONE_REGION
 // so the user does not type the environment id either. The secret is read per request and
-// never stored, logged, or echoed.
+// never stored, logged, or echoed. Its token is used ONLY for the PingOne Management API
+// (find or create the sign-in application); it is never sent to the MCP server, which takes
+// a user sign-in.
 function parseWorkerEnvFile(env) {
   const file = env.MFAADM_WORKER_ENV_FILE || path.join(os.homedir(), '.config', 'mfa-admin-mcp', 'worker.env');
   let txt;
@@ -133,7 +136,7 @@ export function setupRouter(app, { fetchImpl = fetch, env = process.env } = {}) 
     }
     return res.json({
       ok: true, created, appName: app.name, clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI,
-      connection: { kind: 'pingone', region, envId, auth: 'interactive', clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI, label: 'PingOne hosted MCP (set up)' },
+      connection: { kind: 'pingone', region, envId, auth: 'interactive', endpointStyle: 'mcp-host', clientId: app.id, redirectUri: PI_FLOW_REDIRECT_URI, label: 'PingOne hosted MCP (set up)' },
     });
   });
 }

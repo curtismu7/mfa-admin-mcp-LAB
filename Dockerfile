@@ -21,7 +21,7 @@ COPY server/src server/src
 # The diagrams are diagram-studio/1 data files, validated when the server starts: the image must carry them.
 COPY server/diagrams server/diagrams
 COPY --from=web /app/web/dist web/dist
-# The data dir holds the saved connections (mode 600 file, including worker secrets) and the audit log: mode 700, owned by the non-root user.
+# The data dir holds the saved connections (mode 600 file; a custom server's header value is the only secret) and the audit log: mode 700, owned by the non-root user.
 RUN mkdir -p /data && chown node:node /data && chmod 700 /data
 USER node
 EXPOSE 7815

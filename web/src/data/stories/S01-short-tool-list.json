@@ -1,45 +1,45 @@
 {
   "id": "S01",
   "title": "Why do I only see a short tool list?",
-  "goal": "{{lena}} at {{vocab.org}} connects an assistant to PingOne's hosted MCP server and expects the full admin tool set. She sees a short list.",
-  "obstacle": "The tool list is gated by the admin roles of the identity that connects. A short list looks like a broken server, so people debug the wrong thing.",
-  "control": "{{mark}} checks the roles on the connecting identity first. Role gating is the control: a viewer identity never sees write tools, whatever the client asks for.",
+  "goal": "{{lena}} at {{vocab.org}} signs in to PingOne's hosted MCP server as an administrator and expects the full admin tool set. She sees a short list.",
+  "obstacle": "The tool list is gated by the admin roles of the user who signs in. A short list looks like a broken server, so people debug the wrong thing.",
+  "control": "{{mark}} checks the admin roles of the signed-in user first. Role gating is the control: a user with a read-only role never sees write tools, whatever the client asks for.",
   "modes": [
     "tool-list"
   ],
   "steps": [
     {
       "n": 1,
-      "title": "Connect as a viewer",
-      "tell": "In the mock demo connection pick the viewer role and press Test connection. The health card counts the tools and says in words that a short list usually means missing roles.",
-      "say": "The server is fine. The identity is what the server is looking at.",
-      "why": "Role gating is per identity, so the same server shows different tools to different callers (pingone-mcp skill)."
+      "title": "Sign in as a viewer",
+      "tell": "Add the mock demo, press P1 login and sign in as mock.viewer (the password and code are filled in). The card tests the connection: the health card counts the tools and says in words that a short list usually means missing roles.",
+      "say": "The server is fine. The signed-in user is what the server is looking at.",
+      "why": "Role gating is per user, so the same server shows different tools to different administrators (Ping's MCP docs: the tools a user sees depend on their admin roles)."
     },
     {
       "n": 2,
       "title": "Read the list",
-      "tell": "Open Tools. Every tool the viewer sees carries a read badge. No write tool is listed, so none can be called.",
+      "tell": "Open Tools. Every tool mock.viewer sees carries a read badge. No write tool is listed, so none can be called.",
       "say": "No write tool in the list means no write path, not a hidden switch.",
-      "why": "A tool that is not listed cannot be called: this app also refuses a call to a tool the identity does not see."
+      "why": "A tool that is not listed cannot be called: this app also refuses a call to a tool the signed-in user does not see."
     },
     {
       "n": 3,
-      "title": "Switch to admin",
-      "tell": "Switch the demo role to admin and test again. The count grows and write and destructive tools appear, each labelled with why it was classed that way.",
-      "say": "Same server, same URL, a bigger list. Only the roles changed.",
+      "title": "Sign in as an admin",
+      "tell": "Sign out, then sign in again as mock.admin. The count grows and write and destructive tools appear, each labelled with why it was classed that way.",
+      "say": "Same server, same URL, a bigger list. Only the user, and so the roles, changed.",
       "why": "The fix for a short list is a role assignment in PingOne, not a retry loop."
     },
     {
       "n": 4,
       "title": "Check the real numbers yourself",
-      "tell": "On a real tenant the count depends on your roles. The hosted PingOne MCP server exposed 114 tools to a fully privileged worker when this lab was built (2026-11-12, including the MFA administration set). That figure is not verified by this app.",
+      "tell": "On a real tenant the count depends on the roles of the administrator who signs in. When this lab was built (2026-11-12, before the hosted server required a user sign-in) it listed 114 tools, including the MFA administration set. What a fully privileged administrator sees today is not verified by this app.",
       "say": "I will quote a number only when I have measured it on our tenant.",
       "why": "Numbers from a document are a starting point; the owner checks listed in docs/live-checks.md settle it."
     }
   ],
   "proof": {
-    "happy": "The viewer list contains read tools only; the admin list contains write and destructive tools as well.",
-    "blocked": "As a viewer, a call to a write tool is refused because the tool is not in the list."
+    "happy": "The mock.viewer list contains read tools only; the mock.admin list contains write and destructive tools as well.",
+    "blocked": "Signed in as mock.viewer, a call to a write tool is refused because the tool is not in the list."
   },
   "say": "A short tool list is a roles question first, a server question last."
 }

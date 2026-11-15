@@ -4,23 +4,23 @@ Nothing in this repo has talked to a real PingOne tenant. Run these yourself, wi
 
 ## Before you start
 
-- Your own environment id, region, a worker application (client id, secret) with the least roles you can, and optionally a public native OAuth application (the Setup card creates one) for the interactive sign-in. None of these are ever committed; you type them into a connection.
+- Your own environment id and region, an administrator account you can sign in with (its admin roles decide the tools you see), and a public native OAuth application for that sign-in (the Setup card creates one). Setup needs a Management worker application (client id, secret, the least roles that can read and update applications): it calls the Management API only and is never used to call the MCP server. None of these are ever committed.
 - Run the app (`npm start`, or `HOST_PORT=7815 docker compose up --build -d`). Open `http://localhost:7815`.
 - Writes stay **off** until check 12.
 
 ## Checks
 
-1. Which MCP endpoint shape answers: `api.pingone.<region>/v1/environments/<envId>/mcp` (skill) or `mcp.pingone.<region>/admin/<envId>/mcp` (AI-DEMO2). Try both via the connection's endpoint style.
-2. Worker auth: does a Worker application's `client_credentials` token work against the hosted MCP at all? AI-DEMO2's adapter header says it was rejected with 401 (audience mismatch, measured 2026-08-30); the skill says Worker auth is supported. They disagree.
-3. Interactive auth: which client id the hosted server accepts (AI-DEMO2 measured only the built-in `pingone-mcp-server`), and whether a token from your own public native app (minted through pi.flow) is refused.
+1. Which MCP endpoint shape answers. Documented, and the default for a new connection: `mcp.pingone.<region>/admin/<envId>/mcp` (Ping's early-access MCP docs; also the only shape that answered on 2026-10-21, see below). The `api.pingone.<region>/v1/environments/<envId>/mcp` shape (pingone-mcp skill) stays selectable and is UNVERIFIED.
+2. Worker auth: **resolved, see "Result of item 2 (2026-11-15)" below.** The hosted MCP server takes a user sign-in, not a worker (`client_credentials`) token, and the lab no longer offers a worker path for PingOne connections.
+3. Interactive auth: **UNVERIFIED, the one remaining owner-run check: whether the hosted MCP server accepts a token from the lab's own public pi.flow application** (Setup creates it). AI-DEMO2 measured that the server accepted only tokens minted for PingOne's built-in client `pingone-mcp-server`. The lab names the MCP URL as the resource (RFC 8707) on the authorize, code and refresh requests, as the server's protected-resource metadata asks.
 4. The placeholder redirect URI (`http://localhost/mfa-admin-mcp-lab/pi-flow`): PingOne requires one on the application and names it in the authorize and token requests, but pi.flow never redirects to it, so nothing is served there. Measured: see "Result of the pi.flow switch" below.
 5. Scopes and consent: this tool requests `openid offline_access` (copied from AI-DEMO2); what consent screen appears and what roles the token carries is unverified. It also requires an `id_token` (to check the nonce); if the AS returns none, sign-in fails by design.
-6. Tool count: the skill says about 60-70 tools for a fully privileged Worker (AI-DEMO2 measured 73-78 for an admin user). The "short list" hint triggers under 40.
+6. Tool count: the tools follow the signed-in administrator's admin roles (Ping's MCP docs). AI-DEMO2 measured 73-78 for an admin user; this lab saw 114 on 2026-11-12, before the user sign-in was required. The "short list" hint triggers under 40.
 7. JWKS location `<as>/jwks`, used to verify the id_token signature.
 8. Whether tool annotations (`readOnlyHint`, `destructiveHint`) are present on the real server. If absent, every classification is the name heuristic.
 9. The interactive P1 login button against a real tenant: the dialog (username and password, then the SMS or email code PingOne sends, a device choice if the account has several) and the token exchange. Driven only against this repo's mock authorization server so far; the real sign-in needs the owner's credentials and phone. A sign-on policy that asks for a passkey or an external sign-in is refused with the reason (there is no redirect fallback).
 9b. The "PF login" button (offered on a connection created with Authorization server = PingFederate, whose base URL is required; the offline mock simulates one; there is no default host): with an OAuth application on your PingFederate instance (PKCE enabled, a public client, pi.flow / native flow enabled), sign in should open the flow at `<pf-base>/as/authorization.oauth2` (response_mode=pi.flow), drive it at `<pf-base>/pf-ws/authn/flows/<id>` (vendor content types and the `X-XSRF-Header` CSRF header, as the family's own driver does), redeem at `<pf-base>/as/token.oauth2` and verify the id_token against `<pf-base>/pf/JWKS`. The PingFederate step shapes are copied from a working family driver and proven only against this repo's mock and a stub. The id_token issuer must equal `<pf-base>/as` (PF's issuer setting must match; UNVERIFIED against a real PF). PF commonly signs with RS256 or ES256 — the tool accepts RS256/384/512 and ES256/384/512 (raw r||s signatures, as JWS defines them) from the published JWKS and refuses any other algorithm; the ES256 path is proven against a locally signed token, not a real PF. The MCP endpoint still points at PingOne; UNVERIFIED that PingOne's hosted MCP accepts a PingFederate-issued token (audience mapping).
-10. The UI's role hint (a list under 40 tools) and the "about 60-70 tools" note are from the skill and have not been compared with a live count.
+10. The UI's role hint (a list under 40 tools) and the note that the list follows the signed-in user's admin roles have not been compared with a live count.
 11. One read call: on the Tools page call a read tool such as `listApplications` (UNVERIFIED that this exact name exists on your tenant; use whatever the list shows). Expect a result and an `ok` row in the Audit page.
 12. One gated write on a throwaway object (only after checks 1 to 10): turn on "allow writes" for the connection (the red banner appears), call a create tool for a throwaway object (for example a test population or application, named so you can recognise it), read the exact arguments in the confirm dialog, confirm, then verify in the PingOne console that it exists. Delete it in the console, or with the destructive-gated tool (type the tool name), and turn "allow writes" off again.
 13. The scan on the real tool list: press "Scan this server's tools". Record the count of findings and whether any is a false positive on real PingOne wording.
@@ -44,10 +44,9 @@ Date / who:
 App version and commit (git rev-parse --short HEAD):
 Run mode: host / container (HOST_PORT=...)
 Environment id (first 8 chars only), region:
-Endpoint style that answered: api / mcp-host / neither
-Worker auth (check 2): works / 401 / other (status only, no body)
-Interactive auth (checks 3-5, 9): client id kind (built-in / own app: say which, no id), steps the dialog showed (password / device / code), result, id_token returned (yes/no)
-Tool count per identity (check 6): worker=__, interactive admin=__, short-list hint shown (yes/no)
+Endpoint style that answered: mcp-host / api / neither
+Interactive auth (checks 3-5, 9): client id kind (built-in / own app: say which, no id), steps the dialog showed (password / device / code), result, id_token returned (yes/no), MCP accepted the token (yes / 401 / other)
+Tool count per signed-in admin (check 6): roles (names only)=__, tools=__, short-list hint shown (yes/no)
 Annotations present (check 8): readOnlyHint yes/no, destructiveHint yes/no
 Read call (check 11): tool name, ok / error code
 Gated write (check 12): tool name, blocked while writes off (yes/no), confirm dialog showed the right arguments (yes/no), object appeared in PingOne (yes/no), cleaned up (yes/no)
@@ -57,15 +56,18 @@ Anything surprising:
 
 
 
-## Result of item 2 (2026-10-21, one tenant, by the owner's standalone worker)
-A worker (client_credentials) token IS accepted by the hosted MCP server: 82 tools listed. That tenant answered only on the `mcp-host` shape (`https://mcp.pingone.<region>/admin/<env>/mcp`); the `api` shape returned 400 "must be sent to its custom domain". One tenant only: not a general guarantee. The one-click PingOne preset defaults to `mcp-host` (PINGONE_ENDPOINT_STYLE overrides).
+## Result of item 2 (2026-11-15, the owner)
+The owner states that the hosted PingOne MCP server **no longer accepts a worker (client_credentials) token**: it takes a real user sign-in. Ping's early-access docs agree: [p1-client-configuration](https://developer.pingidentity.com/build-with-ai/pingone-mcp-server/p1-client-configuration.html) and [p1-authentication](https://developer.pingidentity.com/build-with-ai/pingone-mcp-server/p1-authentication.html) document only an administrator user signing in, and the tools that user sees depend on their admin roles. The live protected-resource metadata, `https://mcp.pingone.<region>/.well-known/oauth-protected-resource/admin/<envId>/mcp`, names the issuer `https://auth.pingone.<region>/<envId>/as` and the resource = the MCP URL (`https://mcp.pingone.<region>/admin/<envId>/mcp`). The lab therefore removed the worker path for PingOne connections (a create with `auth: 'worker'` or a client secret is refused; an old saved one is refused on every call), sends `resource=<the MCP URL>` on the sign-in, and defaults new connections to the `mcp-host` shape. Still UNVERIFIED: check 3.
+
+## Result of item 2 (2026-10-21, one tenant, by the owner's standalone worker; superseded 2026-11-15, see above)
+As measured then, a worker (client_credentials) token was accepted by the hosted MCP server: 82 tools listed. That tenant answered only on the `mcp-host` shape (`https://mcp.pingone.<region>/admin/<env>/mcp`); the `api` shape returned 400 "must be sent to its custom domain". One tenant only: not a general guarantee. (The one-click PingOne worker preset that used it is gone.)
 
 ## Result of item 4 (2026-11-13, one tenant, by the owner's session)
 Superseded 2026-11-15: the sign-in is now pi.flow (see the last section), so there is no callback. As measured then, for the redirect login through the lab proxy (verified up to the authorize hop):
 - The hosted MCP endpoint shape that answers is `mcp-host` (`https://mcp.pingone.<region>/admin/<env>/mcp`) — consistent with the 2026-10-21 result above.
 - The interactive connection's `login/start` returns a real `auth.pingone.com` authorize URL (PKCE S256, state, nonce) with `redirect_uri=http://localhost:8443/api/oauth/callback`; the browser's port is taken from `X-Forwarded-Host` behind the shared lab-proxy.
 - The Setup card's `check` reaches the real environment (unauthenticated OIDC discovery) and `apply` reuses an existing app that already carries the callback (`created: false`, app name returned, secret never echoed).
-- Worker (`client_credentials`) tokens against the Management API work for setup (app create/update); the hosted-MCP worker question stays as measured on 2026-10-21 (accepted on that tenant, 82 tools).
+- Worker (`client_credentials`) tokens against the Management API work for setup (app create/update). The hosted-MCP worker question is settled by the 2026-11-15 result above (no longer accepted).
 - NOT yet run: the actual browser sign-in and a real `getMfaSettings` call (owner-run; needs the owner's credentials).
 
 ## Result of item 5 (2026-11-13, one tenant, by the owner's session)

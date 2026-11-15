@@ -1,17 +1,19 @@
-// Auth for PingOne connections. Tokens (access, refresh, id) and the client secret live server-side only and are never
-// returned, logged or audited. Two models (pingone-mcp skill):
-//  worker:      client_credentials at the token endpoint; Basic or the secret in the body is used ONLY there.
-//  interactive: PingOne native flow (response_mode=pi.flow, rule 16): no redirect, no callback. This server opens the flow
-//               (authorization code + PKCE S256 + nonce), keeps the flow id and its session cookies, and drives the steps
-//               the browser's own form supplies (password, one-time code, device choice). The code is redeemed at the
-//               token endpoint as a PUBLIC client (no secret); iss validated; id_token signature checked against the AS jwks.
-//               The password and one-time code pass through to the authorization server and are never stored or logged.
+// Auth for PingOne connections. Tokens (access, refresh, id) live server-side only and are never returned, logged or audited.
+// One model: the hosted PingOne MCP server takes a USER sign-in (owner statement 2026-11-15; Ping's early-access MCP docs describe only
+// an administrator signing in, the tools depending on that user's admin roles). No worker (client_credentials) path exists.
+//  PingOne native flow (response_mode=pi.flow, rule 16): no redirect, no callback. This server opens the flow
+//  (authorization code + PKCE S256 + nonce), keeps the flow id and its session cookies, and drives the steps
+//  the browser's own form supplies (password, one-time code, device choice). The code is redeemed at the
+//  token endpoint as a PUBLIC client (no secret); iss validated; id_token signature checked against the AS jwks.
+//  The password and one-time code pass through to the authorization server and are never stored or logged.
+//  For PingOne the authorize, code and refresh requests carry resource=<the connection's MCP URL> (RFC 8707): the MCP server's
+//  protected-resource metadata names that URL as its resource. PingFederate sign-in is left as it was (no resource).
 // Token-endpoint shape and the refresh grant follow AI-DEMO2 services/pingoneMcpTokenService.js and
 // routes/mcpPingOneAdminAuth.js. Scopes ('openid offline_access') are copied from the latter; their effect on a
 // live tenant is UNVERIFIED by us.
 import crypto from 'node:crypto';
 import { scrub } from './redact.js';
-import { asBase } from './urls.js';
+import { asBase, mcpUrl } from './urls.js';
 
 const MARGIN_MS = 60_000;
 const LOGIN_TTL_MS = 5 * 60_000;
@@ -20,6 +22,8 @@ const MAX_ATTEMPTS = 5; // wrong passwords / codes allowed on one sign-in before
 // pi.flow still names a redirect URI in the authorize and token requests; nothing is served at it (no callback exists).
 export const PI_FLOW_REDIRECT_URI = 'http://localhost/mfa-admin-mcp-lab/pi-flow';
 const FLOW_ID = /^[A-Za-z0-9_-]{6,64}$/;
+// A PingOne connection saved by an older build with auth 'worker': it is kept (and its secret stays write-only on disk) but cannot call.
+export const LEGACY_WORKER = 'this connection was saved by an older build for a worker (client_credentials) token, which the hosted PingOne MCP server does not take: it needs a user sign-in. Delete it and add a PingOne connection (Setup creates the sign-in application).';
 // What differs between the two authorization servers' native flows. PingOne: /flows/{id}, vendor content types, the code comes
 // from /as/resume. PingFederate: /pf-ws/authn/flows/{id}, a CSRF header, the code is in the COMPLETED body.
 const PROFILES = {
@@ -65,19 +69,23 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
   const logins = new Map();   // loginId -> { connId, idp, flowId, cookies, status, verifier, nonce, redirectUri, attempts, at }
 
   const baseOf = (conn) => asBase({ region: conn.region, envId: conn.envId, offlineBase: resolveBase(conn), idp: conn.idp, idpBaseUrl: conn.idpBaseUrl });
+  // RFC 8707 resource indicator: the MCP URL this connection calls (the in-process mock's for an offline connection). PingOne only.
+  const resourceOf = (conn) => mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle, offlineBase: resolveBase(conn) });
+  const withResource = (conn, idp, params) => (idp === 'pf' ? params : { ...params, resource: resourceOf(conn) });
+  const refuseLegacy = (conn) => { if (conn.kind === 'pingone' && conn.auth === 'worker') throw authError('worker_unsupported', LEGACY_WORKER); };
 
-  async function tokenRequest(conn, params, { basic, idp } = {}) {
+  async function tokenRequest(conn, params, { idp } = {}) {
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
     const body = new URLSearchParams(params);
-    if (basic) headers.Authorization = `Basic ${Buffer.from(`${conn.clientId}:${conn.clientSecret}`).toString('base64')}`;
     let res;
     try { res = await fetchImpl(ep({ ...conn, ...(idp ? { idp } : {}) }, 'token'), { method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(15_000) }); }
     catch (e) { throw authError('token_endpoint_unreachable', `token endpoint unreachable (${e?.cause?.code || e?.code || 'network error'})`); }
     let json = null;
     try { json = JSON.parse((await res.text()).slice(0, 100_000)); } catch { /* not JSON */ }
     if (!res.ok || !json?.access_token) {
-      const detail = scrub([json?.error, json?.error_description].filter((x) => typeof x === 'string').join(': ').slice(0, 200), [conn.clientSecret]);
-      const needsPublic = json?.error === 'invalid_client' && !basic && params.grant_type === 'authorization_code'
+      // What was sent (the code, the PKCE verifier, the refresh token) never comes back in an error, even when the server echoes it.
+      const detail = scrub([json?.error, json?.error_description].filter((x) => typeof x === 'string').join(': ').slice(0, 200), [params.code, params.code_verifier, params.refresh_token]);
+      const needsPublic = json?.error === 'invalid_client' && params.grant_type === 'authorization_code'
         ? '. The sign-in application must be a public client (token endpoint authentication: None): create one with Setup' : '';
       throw authError('token_request_failed', `token endpoint answered ${res.status}${detail ? ` (${detail})` : ''}${needsPublic}`);
     }
@@ -91,40 +99,27 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     return rec;
   }
 
-  async function mintWorker(conn) {
-    const params = { grant_type: 'client_credentials' };
-    if (conn.tokenAuthMethod === 'post') { params.client_id = conn.clientId; params.client_secret = conn.clientSecret; }
-    return remember(conn, await tokenRequest(conn, params, { basic: conn.tokenAuthMethod !== 'post' }));
-  }
-
   async function refresh(conn) {
     const t = tokens.get(conn.id);
     if (!t?.refreshToken) return false;
-    try { remember(conn, await tokenRequest(conn, { grant_type: 'refresh_token', refresh_token: t.refreshToken, client_id: conn.clientId }), t); return true; }
+    try { remember(conn, await tokenRequest(conn, withResource(conn, conn.idp, { grant_type: 'refresh_token', refresh_token: t.refreshToken, client_id: conn.clientId })), t); return true; }
     catch { tokens.delete(conn.id); return false; }
   }
 
   async function accessToken(conn) {
+    refuseLegacy(conn);
     let t = tokens.get(conn.id);
-    if (conn.auth === 'worker') {
-      if (!t || t.expiresAt - MARGIN_MS <= now()) t = await mintWorker(conn);
-      return t.accessToken;
-    }
     if (t && t.expiresAt - MARGIN_MS <= now()) { await refresh(conn); t = tokens.get(conn.id); }
     if (!t || t.expiresAt <= now()) throw authError('login_required', 'not signed in: use Sign in on this connection');
     return t.accessToken;
   }
 
   // Called after a 401: true when a fresh token is ready.
-  async function renew(conn) {
-    if (conn.auth === 'worker') { tokens.delete(conn.id); await mintWorker(conn); return true; }
-    return refresh(conn);
-  }
+  const renew = (conn) => refresh(conn);
 
   function status(conn) {
     const t = tokens.get(conn.id);
     if (conn.kind !== 'pingone') return { signedIn: false };
-    if (conn.auth === 'worker') return t && t.expiresAt > now() ? { token: 'set', expiresAt: t.expiresAt } : { token: null };
     return t && t.expiresAt > now() ? { signedIn: true, as: t.sub || 'unknown', expiresAt: t.expiresAt } : { signedIn: false };
   }
   const secretsOf = (conn) => { const t = tokens.get(conn.id); return t ? [t.accessToken, t.refreshToken].filter(Boolean) : []; };
@@ -153,13 +148,14 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
 
   // Opens a native flow at the authorization server and returns the first step for the browser's own form.
   async function startLogin(conn, { idp } = {}) {
+    refuseLegacy(conn);
     if (conn.kind !== 'pingone' || conn.auth !== 'interactive') throw authError('not_interactive', 'this connection does not use interactive sign-in');
     const eff = effIdp(conn, idp);
     const authorizeEndpoint = ep({ ...conn, idp: eff }, 'authorize'); // throws pf_not_configured before any state exists
     pruneLogins();
     const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
     const redirectUri = conn.redirectUri || PI_FLOW_REDIRECT_URI;
-    const q = new URLSearchParams({ response_type: 'code', client_id: conn.clientId, redirect_uri: redirectUri, scope: 'openid offline_access', nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' });
+    const q = new URLSearchParams(withResource(conn, eff, { response_type: 'code', client_id: conn.clientId, redirect_uri: redirectUri, scope: 'openid offline_access', nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' }));
     let res; let flow = null;
     try {
       res = await fetchImpl(`${authorizeEndpoint}?${q}`, { headers: { Accept: profileOf(eff).accept }, redirect: 'manual', signal: AbortSignal.timeout(15_000) });
@@ -219,7 +215,7 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
       if (!code && r.headers.get('location')) { try { code = new URL(r.headers.get('location')).searchParams.get('code') || ''; } catch { /* not a URL */ } }
     }
     if (!code) throw authError('pi_flow_no_code', 'the sign-in finished but no authorization code came back');
-    const json = await tokenRequest(conn, { grant_type: 'authorization_code', code: String(code), redirect_uri: login.redirectUri, client_id: conn.clientId, code_verifier: login.verifier }, { idp: login.idp });
+    const json = await tokenRequest(conn, withResource(conn, login.idp, { grant_type: 'authorization_code', code: String(code), redirect_uri: login.redirectUri, client_id: conn.clientId, code_verifier: login.verifier }), { idp: login.idp });
     if (!json.id_token) throw authError('bad_id_token', 'no id_token returned, so the nonce cannot be checked');
     const claims = await verifyIdToken(conn, json.id_token, login.nonce, { idp: login.idp });
     const rec = remember(conn, json); rec.sub = String(claims.sub || '').slice(0, 80) || null;

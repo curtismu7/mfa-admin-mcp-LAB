@@ -1,7 +1,7 @@
 // The one shared settings file (rulebook): ~/Development/.env, or the path in STANDALONE_ENV. Every standalone app reads it, so it
 // holds other apps' keys too. This app takes ONLY the keys listed below and ignores everything else: nothing else from the file ever
-// enters the server's environment, and no value is printed. Read only; the app never writes it. Admin and worker credentials are
-// never in this file.
+// enters the server's environment, and no value is printed. Read only; the app never writes it. Admin credentials and the Setup
+// card's Management worker credentials (Management API only, never sent to the MCP server) are never in this file.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

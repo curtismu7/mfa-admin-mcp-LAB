@@ -5,7 +5,7 @@ import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { MODE_KEY, liveGuards, liveRefusal, modeFrom } from '../src/config.js';
 import { SETTINGS_KEYS, applySharedSettings, readSharedSettings } from '../src/settings.js';
-import { ENV_ID, startApp, tmpDir, workerConn } from './helpers.js';
+import { addSignedIn, ENV_ID, mockConn, startApp, tmpDir } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -25,12 +25,12 @@ test('GET /api/info: Mock is the mode, Live is refused and says which guard fail
 });
 
 test('with Live refused by the bind: a saved Live connection cannot be created, from the form or a preset, and nothing is stored', async () => {
-  for (const body of [liveBody, workerConn({ offline: false }), { ...workerConn({ offline: false }), auth: 'interactive', redirectUri: `${s.origin.replace('127.0.0.1', 'localhost')}/api/oauth/callback` }]) {
+  for (const body of [liveBody, mockConn({ offline: false }), mockConn({ offline: false, redirectUri: `${s.origin.replace('127.0.0.1', 'localhost')}/api/oauth/callback` })]) {
     const r = await s.call('POST', '/api/connections', body);
     assert.equal(r.status, 403, r.text); assert.equal(r.json.error, 'live_refused'); assert.deepEqual(r.json.failed, ['loopback-bind']);
   }
-  for (const id of ['banking', 'opensearch', 'pingone']) assert.equal((await s.call('POST', `/api/presets/${id}`)).status, 403, id);
-  for (const id of ['nope', '__proto__', 'constructor', 'toString']) { const r = await s.call('POST', `/api/presets/${id}`); assert.equal(r.status, 404, id); assert.equal(r.json.error, 'unknown_preset', id); }
+  for (const id of ['banking', 'opensearch']) assert.equal((await s.call('POST', `/api/presets/${id}`)).status, 403, id);
+  for (const id of ['nope', 'pingone', '__proto__', 'constructor', 'toString']) { const r = await s.call('POST', `/api/presets/${id}`); assert.equal(r.status, 404, id); assert.equal(r.json.error, 'unknown_preset', id); }
   assert.equal(s.app.locals.store.list().length, 0);
 });
 
@@ -50,9 +50,7 @@ test('with Live refused: a Live connection already in the file is refused on eve
 });
 
 test('with Live refused: the Mock demo works in full (tools, call, scan, audit), with zero outbound attempts', async () => {
-  const r = await s.call('POST', '/api/connections', workerConn({ offline: true, clientId: 'admin-demo' }));
-  assert.equal(r.status, 201, r.text);
-  const id = r.json.id;
+  const { id } = await addSignedIn(s); // the mock pi.flow sign-in runs on loopback too
   assert.equal((await s.call('POST', `/api/connections/${id}/test`)).json.ok, true);
   const tools = (await s.call('GET', `/api/connections/${id}/tools`)).json;
   assert.ok(tools.count > 10);
@@ -92,14 +90,14 @@ test('the shared settings file: only the listed keys are taken, nothing else ent
   assert.deepEqual(applySharedSettings({ STANDALONE_ENV: path.join(dir, 'missing') }), { STANDALONE_ENV: path.join(dir, 'missing') });
 });
 
-test('the shared settings file can supply the PingOne preset with an environment id and region, never a client id or secret', async () => {
+test('the shared settings file can supply the default environment id and region for the forms, never a client id or secret', async () => {
   const dir = tmpDir(); const file = path.join(dir, 'worker.env');
   fs.writeFileSync(file, 'PINGONE_CLIENT_ID=worker-1\nPINGONE_CLIENT_SECRET=sentinel-secret-xyz\n', { mode: 0o600 });
   const t = await startApp({ env: { MFAADM_WORKER_ENV_FILE: file, PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'eu' } });
   try {
-    const r = await t.call('POST', '/api/presets/pingone');
-    assert.equal(r.status, 201, r.text); assert.equal(r.json.envId, ENV_ID); assert.equal(r.json.region, 'eu'); assert.equal(r.json.clientSecret, 'set');
-    assert.ok(!r.text.includes('sentinel-secret-xyz'));
+    const r = await t.call('GET', '/api/setup/defaults');
+    assert.equal(r.status, 200, r.text); assert.equal(r.json.envId, ENV_ID); assert.equal(r.json.region, 'eu');
+    assert.ok(!r.text.includes('sentinel-secret-xyz') && !r.text.includes('worker-1'));
   } finally { await t.close(); }
 });
 

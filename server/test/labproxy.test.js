@@ -6,7 +6,7 @@ import test from 'node:test';
 import { createApp } from '../src/app.js';
 import { allPassed, runChecks } from '../src/doctor.js';
 import { allowedHostNames, labAllowedHosts } from '../src/security.js';
-import { startApp, workerConn } from './helpers.js';
+import { mockConn, startApp } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -95,7 +95,7 @@ test('behind the lab-proxy: a write is accepted only with the proxy\'s forwarded
 test('behind the lab-proxy: the sign-in steps are same-origin writes like any other, and need no callback URL (pi.flow has none)', async () => {
   const s = await startApp({ env: { LAB_ALLOWED_HOSTS: PROXY_HOST } });
   try {
-    const c = (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined })).json;
+    const c = (await s.call('POST', '/api/connections', mockConn())).json;
     const host = `${PROXY_HOST}:7815`;
     const post = (p, body, headers = { ...FWD, origin: PROXY_ORIGIN }) => call(s.port, 'POST', `/api/connections/${c.id}/${p}`, { host, headers, body });
     const start = await post('login/start', {});

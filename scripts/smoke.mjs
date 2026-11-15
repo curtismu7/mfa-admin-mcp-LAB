@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The minimum end-to-end check against a RUNNING app (npm start, or the Docker container): health, the mode, the mock demo end to end
-// (add, test, list tools, scan, one read call, delete), and Reset. It uses the mock demo only and removes the connection it made, so
+// (add, sign in as mock.viewer through the mock pi.flow, test, list tools, scan, one read call, delete), and Reset. It uses the mock demo only and removes the connection it made, so
 // it never reaches a real server even if Live is set up on this machine. Prints one line per check, exits 1 on a failure. Loopback only.
 //   node scripts/smoke.mjs [base-url]      (default http://127.0.0.1:${PORT:-7815})
 import { isLoopbackHost } from '../server/src/security.js';
@@ -21,9 +21,16 @@ try {
   check(h.status === 200 && h.json.schema === 'demo-health/1' && h.json.state !== 'broken', 'GET /api/health is demo-health/1 and not broken');
   const i = await send('GET', '/api/info');
   check(i.status === 200 && i.json.mode === 'mock' && typeof i.json.live?.available === 'boolean', `GET /api/info: the page opens in Mock (Live is ${i.json.live?.available ? 'allowed by the owner' : 'refused'})`);
-  const made = await send('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'smoke', region: 'com', envId: PLACEHOLDER_ENV, auth: 'worker', clientId: 'viewer-demo', clientSecret: 'demo-secret', endpointStyle: 'api' });
+  const made = await send('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'smoke', region: 'com', envId: PLACEHOLDER_ENV, clientId: 'mock-native-app' });
   madeId = made.json?.id ?? null;
-  check(made.status === 201 && madeId, 'POST /api/connections: the mock demo is added');
+  check(made.status === 201 && madeId && made.json.auth === 'interactive', 'POST /api/connections: the mock demo is added (a user sign-in)');
+  // Sign in as the mock viewer through the app's own login routes (pi.flow against the in-process mock): password, then the code.
+  const start = await send('POST', `/api/connections/${madeId}/login/start`, {});
+  const m = start.json?.mockLogin ?? {};
+  const step = (b) => send('POST', `/api/connections/${madeId}/login/step`, { loginId: start.json?.loginId, ...b });
+  await step({ action: 'password', username: m.viewer, password: m.password });
+  const signed = await step({ action: 'otp', otp: m.otp });
+  check(start.status === 200 && signed.status === 200 && signed.json.step === 'done', `login/start + login/step: signed in as ${m.viewer}`);
   const t = await send('POST', `/api/connections/${madeId}/test`);
   check(t.status === 200 && t.json.ok === true && t.json.toolCount > 0, `POST .../test: the mock lists ${t.json.toolCount} tools`);
   const sc = await send('POST', `/api/connections/${madeId}/scan`);
@@ -31,7 +38,7 @@ try {
   const call = await send('POST', `/api/connections/${madeId}/call`, { tool: 'listUsers', arguments: { environmentId: PLACEHOLDER_ENV } });
   check(call.status === 200 && call.json.class === 'read', 'POST .../call: a read tool runs');
   const w = await send('POST', `/api/connections/${madeId}/call`, { tool: 'createApplication', arguments: { environmentId: PLACEHOLDER_ENV, name: 'x' } });
-  check(w.status === 404 || w.status === 403, 'POST .../call: a write is refused (the viewer role does not see it)');
+  check(w.status === 404 || w.status === 403, 'POST .../call: a write is refused (mock.viewer does not see it)');
   const z = await send('POST', '/api/reset', {});
   check(z.status === 200 && z.json.ok === true, 'POST /api/reset: ok');
 } catch (e) { check(false, `the app did not answer at ${base.origin}: ${e.message}`); }

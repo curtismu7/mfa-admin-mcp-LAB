@@ -37,7 +37,7 @@ export default function LoginDialog({ conn, idp, start, onClose, onDone }) {
   return (
     <FloatingDialog isOpen onClose={onClose} title={title} ariaLabel={title} footer={null} className="confirm-dialog"
       testId="login-dialog" storageKey="mfa-admin-mcp.login" defaultWidth={460} defaultHeight={null} minHeight={200}>
-      {s.mockLogin && <p className="hint" data-testid="login-mock">Mock tenant: sign in as <code>{s.mockLogin.username}</code> with password <code>{s.mockLogin.password}</code> (filled in for you), then the code <code>{s.mockLogin.otp}</code>. These accounts exist only in the mock.</p>}
+      {s.mockLogin && <p className="hint" data-testid="login-mock">Mock tenant: sign in as <code>{s.mockLogin.username}</code> (an admin: every tool){s.mockLogin.viewer && <> or <code>{s.mockLogin.viewer}</code> (a viewer: read tools only)</>} with password <code>{s.mockLogin.password}</code> (filled in for you), then the code <code>{s.mockLogin.otp}</code>. The tools you see follow the account you sign in as. These accounts exist only in the mock.</p>}
       {s.step === "password" && (
         <form onSubmit={submit("password", { username: f.username, password: f.password })} aria-label="Username and password">
           <label className="field">Username<input value={f.username} onChange={set("username")} required autoFocus autoComplete="username" spellCheck="false" data-testid="login-username" /></label>

@@ -19,7 +19,6 @@ export default function Tools({ conn, tools, loading, error, test, testBusy, now
   if (!conn) return <><h1>Tools</h1><p>Select or add a connection first.</p></>;
   const interactive = conn.auth === "interactive";
   const signedIn = conn.auth_status?.signedIn === true;
-  const credential = conn.kind === "pingone" && conn.auth === "worker" ? conn.auth_status?.token != null || conn.clientSecret : conn.kind === "custom" ? true : interactive;
   const writesOff = !conn.allowWrites;
   const needsSignIn = interactive && !signedIn;
   const total = (tools || []).length;

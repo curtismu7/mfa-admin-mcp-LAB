@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Real-browser run of the BUILT app against in-process stubs only: the mock demo connection (an in-process mock of the
-// hosted PingOne MCP server) and the mock authorization server behind both the worker and the interactive login. No real
+// hosted PingOne MCP server) and the mock authorization server behind its user sign-in (pi.flow, the page's own dialog). No real
 // PingOne tenant is contacted: the server runs under a netguard that records any non-loopback attempt (asserted empty),
 // and the browser's requests are checked to stay on loopback. Screenshots go to .data/e2e-screenshots (git-ignored).
 //   npm run build && node scripts/e2e.mjs        (E2E_PORT, default 7816; a second server without the Live opt-in runs on E2E_PORT+1)
@@ -74,15 +74,33 @@ try {
   check((await page.getByTestId('banner').innerText()).startsWith('MOCK mode, simulated'), 'with no connection the banner says Mock mode');
   check((await page.getByTestId('mode').innerText()) === 'Mode: mock', 'the mode chip says Mode: mock');
 
-  // (a) mock demo worker connection, (b) health card
-  await page.getByRole('button', { name: /Add mock demo \(worker/ }).click();
+  // A sign-in through the page's own dialog (pi.flow against the mock AS): the password and the code are filled in for the mock.
+  const signInAs = async (username) => {
+    await page.getByRole('button', { name: 'P1 login' }).last().click();
+    await page.getByTestId('login-dialog').waitFor({ timeout: 8000 });
+    await page.getByTestId('login-username').fill(username);
+    await page.getByTestId('login-submit').click();
+    await page.getByTestId('login-otp').waitFor({ timeout: 8000 });
+    await page.getByTestId('login-submit').click(); // the mock code is filled in
+    await page.getByTestId('login-dialog').waitFor({ state: 'detached', timeout: 8000 });
+  };
+
+  // (a) mock demo connection: a user sign-in, as mock.viewer first, (b) health card
+  await page.getByRole('button', { name: 'Add mock demo (sign in)' }).click();
+  await page.getByRole('button', { name: 'P1 login' }).waitFor();
+  check((await page.getByTestId('identity').innerText()).includes('not signed in'), 'the new mock demo is not signed in and was not tested into an error');
+  await page.getByRole('button', { name: 'P1 login' }).click();
+  await page.getByTestId('login-dialog').waitFor({ timeout: 8000 });
+  check((await page.getByTestId('login-mock').innerText()).includes('mock.viewer'), 'the sign-in dialog names the mock.viewer account');
+  await page.getByTestId('login-cancel').click();
+  await signInAs('mock.viewer');
   await page.getByTestId('tool-count').waitFor();
   check((await page.getByTestId('banner').innerText()).includes('not a recording'), 'banner says the catalog is a sample, not a recording');
   check((await page.getByTestId('banner').innerText()).includes('Writes are off'), 'banner says writes are off');
   const viewerCount = await count();
-  check(viewerCount === 18, `viewer role sees 18 read tools (saw ${viewerCount})`);
+  check(viewerCount === 18, `mock.viewer sees 18 read tools (saw ${viewerCount})`);
   check((await page.getByTestId('health-card').innerText()).includes('missing admin roles'), 'health card carries the role hint');
-  check((await page.getByTestId('identity').innerText()).includes('worker token set'), 'identity shows worker token set (no token value)');
+  check((await page.getByTestId('identity').innerText()).includes('signed in as mock-viewer-user'), 'identity shows who signed in (no token value)');
   check(/\d+m \d\ds/.test(await page.getByTestId('expiry').innerText()), 'token expiry countdown is shown');
   await shot('1-connections-light');
 
@@ -104,12 +122,13 @@ try {
   await page.getByLabel('Search').fill('');
   await shot('2-tools-viewer');
 
-  // role switch -> admin
+  // the role is whoever signs in: sign out, sign in again as mock.admin
   await page.getByRole('link', { name: 'Connections' }).click();
-  await page.getByRole('button', { name: 'admin', exact: true }).click();
+  await page.getByRole('button', { name: /^Sign out/ }).click();
+  await signInAs('mock.admin');
   await page.waitForFunction(() => { const n = Number(document.querySelector('[data-testid="tool-count"]')?.textContent); return n > 8 && n !== 18; });
   const adminCount = await count();
-  check(adminCount === 33, `admin role sees 33 tools (saw ${adminCount})`);
+  check(adminCount === 33, `mock.admin sees 33 tools (saw ${adminCount})`);
   await page.getByRole('link', { name: 'Tools', exact: true }).click();
   await page.getByRole('heading', { name: /^Users/ }).waitFor();
   const badges = await page.getByTestId('class-badge').allInnerTexts();
@@ -248,7 +267,7 @@ try {
   check(Math.abs(after.y - before.y) > 40, 'a box can be dragged');
   await page.getByLabel('Speed').selectOption('4');
   await page.getByRole('button', { name: 'Simulate' }).click();
-  await page.getByTestId('caption').getByText(/Step 5 of 5/).waitFor({ timeout: 8000 });
+  await page.getByTestId('caption').getByText(/Step 7 of 7/).waitFor({ timeout: 8000 });
   await shot('11-diagram');
   await page.locator('main').getByRole('button', { name: 'Reset', exact: true }).click();
   let reset = null; // Reset remounts the flow (positions and pan/zoom), so wait for the box to be laid out again
@@ -258,9 +277,10 @@ try {
   check(await page.evaluate(() => document.documentElement.dataset.present) === '1', 'presenter mode turns on');
   await page.keyboard.press('Escape');
 
-  // interactive login against the stub AS as a native flow (pi.flow): the page's own dialog, no redirect, no new page
+  // interactive login against the stub AS as a native flow (pi.flow): the page's own dialog, no redirect, no new page.
+  // A second mock demo, so this one starts signed out (the first stays signed in as mock.admin).
   await page.getByRole('link', { name: 'Connections' }).click();
-  await page.getByRole('button', { name: /Add mock demo with sign-in/ }).click();
+  await page.getByRole('button', { name: 'Add mock demo (sign in)' }).click();
   await page.getByRole('button', { name: 'P1 login' }).waitFor();
   await page.getByRole('button', { name: 'P1 login' }).click();
   await page.getByTestId('login-dialog').waitFor({ timeout: 8000 });
@@ -278,7 +298,7 @@ try {
   check(!page.url().includes('code=') && !page.url().includes('login='), 'no authorization code or callback query ever reaches the address bar (no redirect)');
   check((await page.locator('[data-testid="conn-card"]').last().innerText()).includes('Sign out'), 'a Sign out button replaces Sign in');
   await shot('12-interactive');
-  await page.getByRole('button', { name: /^Sign out/ }).click();
+  await page.getByRole('button', { name: /^Sign out/ }).last().click();
   await page.getByRole('button', { name: 'P1 login' }).waitFor();
   check(true, 'logout clears the session (Sign in is offered again)');
 

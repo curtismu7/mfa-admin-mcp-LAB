@@ -38,7 +38,7 @@ export function buildTalkTrack() {
   lines.push(
     '## Caveats to say out loud',
     '',
-    '- Nothing here was run against a real PingOne tenant. Whether the hosted server accepts a worker (client_credentials) token, which endpoint shape a tenant answers on, and the scopes and consent of the interactive login are UNVERIFIED (docs/live-checks.md).',
+    '- The hosted PingOne MCP server takes an administrator\'s own sign-in, and the tools listed follow that user\'s admin roles (owner statement and Ping\'s MCP docs, 2026-11-15). Nothing in this lab was run against a real tenant: whether the hosted server accepts a token from the lab\'s own public sign-in application, and the scopes and consent of that sign-in, are UNVERIFIED (docs/live-checks.md).',
     '- The mock tool catalog is an illustrative sample, not a recording. The read, write and destructive classes are a heuristic (docs/classification.md); unknown is treated as a write.',
     '- A clean scan of a tool list is not proof of safety.',
     '',
