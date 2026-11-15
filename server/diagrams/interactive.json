@@ -123,7 +123,7 @@
   "steps": [
     {
       "title": "You press Sign in",
-      "what": "This app opens a PingOne native flow (response_mode=pi.flow) with a PKCE challenge and a nonce, and answers with the first step: the sign-in form on this page.",
+      "what": "This app opens a PingOne native flow (response_mode=pi.flow) with a PKCE challenge, a nonce and the MCP server's URL as the resource (RFC 8707), and answers with the first step: the sign-in form on this page.",
       "edges": [
         1
       ]

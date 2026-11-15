@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import test, { after, before } from 'node:test';
-import { startApp, workerConn } from './helpers.js';
+import { MOCK_LOGIN } from '../src/mock.js';
+import { addSignedIn, mockConn, startApp } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -34,17 +35,17 @@ test('a custom server serving the hostile list is flagged (high findings with ru
   assert.ok(!methods.includes('tools/call'), 'scan never calls a tool');
 });
 test('the PingOne mock (viewer and admin) scans clean', async () => {
-  for (const clientId of ['viewer-demo', 'admin-demo']) {
-    const c = (await s.call('POST', '/api/connections', workerConn({ clientId }))).json;
+  for (const user of [MOCK_LOGIN.viewer, MOCK_LOGIN.username]) {
+    const c = await addSignedIn(s, { user });
     const r = await s.call('POST', `/api/connections/${c.id}/scan`, {});
     assert.equal(r.status, 200, r.text);
-    assert.equal(r.json.summary.total, 0, `${clientId}: ${JSON.stringify(r.json.findings)}`);
+    assert.equal(r.json.summary.total, 0, `${user}: ${JSON.stringify(r.json.findings)}`);
     assert.ok(r.json.tools >= 8);
     assert.match(r.json.fixture, /not a recording/);
   }
 });
 test('scan is a same-origin POST like every write route', async () => {
-  const c = (await s.call('POST', '/api/connections', workerConn())).json;
+  const c = (await s.call('POST', '/api/connections', mockConn())).json;
   const r = await s.call('POST', `/api/connections/${c.id}/scan`, {}, { origin: 'http://evil.example' });
   assert.equal(r.status, 403);
 });

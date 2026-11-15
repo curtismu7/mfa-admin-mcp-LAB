@@ -8,8 +8,8 @@ export default function HealthCard({ conn, test, busy, now }) {
   const st = conn.auth_status || {};
   const exp = st.expiresAt;
   const identity = conn.kind !== "pingone" ? (conn.token === "set" ? "custom header set" : "no credential")
-    : conn.auth === "interactive" ? (st.signedIn ? `signed in as ${st.as}` : "not signed in")
-      : st.token === "set" ? "worker token set" : "no token yet";
+    : conn.legacyWorker ? "saved by an older build for a worker token: cannot call (the hosted MCP takes a user sign-in)"
+      : st.signedIn ? `signed in as ${st.as}` : "not signed in";
   return (
     <section className="card" aria-labelledby="health-h" data-testid="health-card">
       <h2 id="health-h">Health: {conn.label}</h2>

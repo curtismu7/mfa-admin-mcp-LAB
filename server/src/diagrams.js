@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { validateDiagram } from './diagramStudioValidate.js';
 
 export const DIAGRAM_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../diagrams');
-export const DIAGRAM_NAMES = Object.freeze(['worker', 'interactive']);
+export const DIAGRAM_NAMES = Object.freeze(['interactive']);
 const HANDLE = /^[lrtb][12]$/;
 
 // Beyond the studio's schema: the file's id is its name, a step must exist, and the optional per-edge `handles` hint (which side slot an

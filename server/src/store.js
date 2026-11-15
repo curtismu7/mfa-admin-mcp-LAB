@@ -1,6 +1,7 @@
 // Saved connections. Adapted from mcp-tools server/src/store.js (MIT, same author): atomic write, file mode 600 in a
-// mode 700 dir, secrets (worker client secret, custom token) held here and never returned: publicView() shows 'set'.
-// Access/refresh/id tokens are NOT stored here: auth.js keeps them in memory only.
+// mode 700 dir, secrets (the custom server's token or header value) held here and never returned: publicView() shows 'set'.
+// Access/refresh/id tokens are NOT stored here: auth.js keeps them in memory only. A PingOne connection holds no secret at all: the
+// hosted PingOne MCP server takes a user sign-in (pi.flow), so the saved record is a public client id and where to sign in.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { isLoopbackHost } from './security.js';
 import { isPrivateLiteral, validEnvId, validRegion } from './urls.js';
 
 const KINDS = new Set(['pingone', 'custom', 'raw']);
+export const WORKER_REFUSED = 'The hosted PingOne MCP server takes a user sign-in (pi.flow), not a worker (client_credentials) token: save the connection without auth "worker" and without a client secret, then sign in. (Setup\'s Management worker only creates the sign-in application; it never calls the MCP server.)';
 
 function cleanUrl(raw) {
   let u;
@@ -44,8 +46,10 @@ export function createStore({ dir }) {
       if (!validRegion(rec.region, rec.regionOther)) throw new Error('region must be one of com, eu, asia, ca (set regionOther:true to use another PingOne suffix; UNVERIFIED)');
       rec.envId = str(b.envId, 64);
       if (!validEnvId(rec.envId)) throw new Error('envId must be your PingOne environment id (a UUID)');
-      rec.auth = b.auth === 'interactive' ? 'interactive' : 'worker';
-      rec.endpointStyle = b.endpointStyle === 'mcp-host' ? 'mcp-host' : 'api';
+      if (b.auth === 'worker' || (b.clientSecret !== undefined && b.clientSecret !== null && b.clientSecret !== '')) throw new Error(WORKER_REFUSED);
+      rec.auth = 'interactive';
+      // mcp-host is the shape Ping's MCP docs name; api stays selectable (UNVERIFIED, see urls.js).
+      rec.endpointStyle = b.endpointStyle === 'api' ? 'api' : 'mcp-host';
       // Which authorization server signs the tokens: PingOne (default) or a PingFederate instance.
       // PF is only meaningful for interactive sign-in (it must run an OAuth app for this tool's PKCE flow).
       rec.idp = b.idp === 'pf' ? 'pf' : 'pingone';
@@ -61,19 +65,13 @@ export function createStore({ dir }) {
       }
       rec.clientId = str(b.clientId, 120);
       if (!rec.clientId) throw new Error('clientId is required');
-      if (rec.auth === 'worker') {
-        rec.clientSecret = str(b.clientSecret, 500);
-        if (!rec.clientSecret) throw new Error('clientSecret is required for worker auth');
-        rec.tokenAuthMethod = b.tokenAuthMethod === 'post' ? 'post' : 'basic';
-      } else {
-        // pi.flow serves no callback, so a redirect URI is optional (the lab sends its own placeholder). A value kept from before pi.flow,
-        // or one a custom application insists on, must still be a URL: http loopback, or https.
-        rec.redirectUri = str(b.redirectUri, 300);
-        if (rec.redirectUri) {
-          let ru; try { ru = new URL(rec.redirectUri); } catch { ru = null; }
-          const okCb = ru && ((ru.protocol === 'http:' && isLoopbackHost(ru.hostname)) || ru.protocol === 'https:');
-          if (!okCb) throw new Error('redirectUri must be an http loopback URI or an https URI');
-        }
+      // pi.flow serves no callback, so a redirect URI is optional (the lab sends its own placeholder). A value kept from before pi.flow,
+      // or one a custom application insists on, must still be a URL: http loopback, or https.
+      rec.redirectUri = str(b.redirectUri, 300);
+      if (rec.redirectUri) {
+        let ru; try { ru = new URL(rec.redirectUri); } catch { ru = null; }
+        const okCb = ru && ((ru.protocol === 'http:' && isLoopbackHost(ru.hostname)) || ru.protocol === 'https:');
+        if (!okCb) throw new Error('redirectUri must be an http loopback URI or an https URI');
       }
     } else {
       rec.url = cleanUrl(b.url);
@@ -89,8 +87,6 @@ export function createStore({ dir }) {
     const all = load(); const rec = Object.hasOwn(all, id) ? all[id] : null;
     if (!rec) return null;
     if (typeof patch.allowWrites === 'boolean') rec.allowWrites = patch.allowWrites;
-    // Mock demo only: the mock derives the role from the client id, so the role switch is a client id swap.
-    if (rec.offline && /^(viewer|admin)-demo$/.test(patch.clientId || '')) rec.clientId = patch.clientId;
     save(all); return rec;
   }
   // Reset: every connection goes back to writes off (the safe state). Saved connections and their secrets are kept.
@@ -100,7 +96,8 @@ export function createStore({ dir }) {
   function publicView(rec) {
     const { clientSecret, token, url, ...rest } = rec;
     const v = { ...rest };
-    if (rec.kind === 'pingone' && rec.auth === 'worker') v.clientSecret = clientSecret ? 'set' : null;
+    // A worker connection saved by an older build keeps its secret on disk (never returned); it cannot call the MCP server any more.
+    if (rec.kind === 'pingone' && rec.auth === 'worker') v.legacyWorker = true;
     if (rec.kind !== 'pingone') { v.token = token ? 'set' : null; const u = new URL(url); v.url = `${u.origin}${u.pathname}`; v.urlHasQuery = Boolean(u.search); }
     return v;
   }

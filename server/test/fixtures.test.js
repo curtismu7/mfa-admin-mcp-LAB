@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test, { after } from 'node:test';
-import { ENV_ID, startApp, tmpDir } from './helpers.js';
+import { addSignedIn, startApp, tmpDir } from './helpers.js';
 
 const SECRET = 'supersecret-value-1';
 const s = await startApp({ dir: tmpDir() });
@@ -23,7 +23,7 @@ test('record, list, replay by the mock, delete', async () => {
   assert.ok(!list.text.includes(SECRET), 'secrets are scrubbed from the listing');
 
   // the mock replays the real result for the same tool name, labelled as a recording
-  const mockConn = (await s.call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'mock', region: 'com', envId: ENV_ID, endpointStyle: 'api', auth: 'worker', clientId: 'admin-demo', clientSecret: 'x' })).json;
+  const mockConn = await addSignedIn(s, { label: 'mock' });
   const replay = await s.call('POST', `/api/connections/${mockConn.id}/call`, { tool: 'get_customer', arguments: {} });
   assert.equal(replay.status, 200, replay.text);
   const text = replay.json.result?.content?.[0]?.text;

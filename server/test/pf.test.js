@@ -6,7 +6,7 @@ import test, { after } from 'node:test';
 import { createAuth, PI_FLOW_REDIRECT_URI } from '../src/auth.js';
 import { createStore } from '../src/store.js';
 import { asBase, liveHosts } from '../src/urls.js';
-import { ENV_ID, startApp, tmpDir, workerConn } from './helpers.js';
+import { ENV_ID, mockConn, startApp, tmpDir } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -106,7 +106,7 @@ test('auth: the DER form of an EC signature, an unsupported algorithm, "none" an
 test('over HTTP: PingFederate sign-in against the mock (its endpoint names, its MFA_COMPLETED step) and the refusal on a live connection with no base URL', async () => {
   const s = await startApp();
   try {
-    const mk = async (o) => (await s.call('POST', '/api/connections', { ...workerConn(), auth: 'interactive', clientSecret: undefined, ...o })).json;
+    const mk = async (o) => (await s.call('POST', '/api/connections', mockConn(o))).json;
     const mock = await mk({ idp: 'pf' });
     const start = await s.call('POST', `/api/connections/${mock.id}/login/start`, { idp: 'pf' });
     assert.equal(start.status, 200, start.text);
@@ -118,6 +118,7 @@ test('over HTTP: PingFederate sign-in against the mock (its endpoint names, its 
     assert.equal(done.json.step, 'done', done.text);
     assert.deepEqual(s.mock.config.flowSteps.map((x) => `${x.kind}:${x.contentType.split('.').pop()}`), ['pf:checkUsernamePassword+json', 'pf:checkOtp+json', 'pf:continueAuthentication+json']);
     assert.equal((await s.call('GET', '/api/connections')).json.connections.find((x) => x.id === mock.id).auth_status.signedIn, true);
+    assert.deepEqual(s.mock.config.resources, [], 'PingFederate sign-in is unchanged: no resource indicator');
 
     const live = await mk({ offline: false, idp: 'pingone' });
     const refused = await s.call('POST', `/api/connections/${live.id}/login/start`, { idp: 'pf' });

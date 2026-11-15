@@ -2,7 +2,7 @@
 // only read lookups, gated like any call.
 import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
-import { startApp, tmpDir, workerConn, ENV_ID } from './helpers.js';
+import { startApp, tmpDir, ENV_ID } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();

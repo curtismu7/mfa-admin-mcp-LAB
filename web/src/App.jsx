@@ -108,8 +108,8 @@ function Shell() {
       const list = await reload();
       if (!list.some((c) => c.id === store.get("mfaadm.active"))) setActiveId(list[0]?.id ?? null);
       const want = list.some((c) => c.id === store.get("mfaadm.active")) ? store.get("mfaadm.active") : list[0]?.id;
-      const offline = list.find((c) => c.id === want && c.offline && c.auth === "worker");
-      if (offline) runTest(offline.id, { modal: false }); // the mock demo is safe to test on its own; a real server waits for the button
+      const offline = list.find((c) => c.id === want && c.offline && c.auth_status?.signedIn === true);
+      if (offline) runTest(offline.id, { modal: false }); // a signed-in mock demo is safe to test on its own; one not signed in waits for its sign-in, a real server for the button
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

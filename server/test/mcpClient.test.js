@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import test, { after, before } from 'node:test';
 import { createMcpClient, MAX_BYTES } from '../src/mcpClient.js';
-import { createMock } from '../src/mock.js';
+import { createMock, MOCK_LOGIN } from '../src/mock.js';
+import { mockToken } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -11,7 +12,7 @@ const mock = createMock();
 before(() => mock.start());
 after(() => mock.stop());
 
-const tok = async () => { const r = await fetch(`${mock.base}/e/as/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials&client_id=admin-app&client_secret=s' }); return (await r.json()).access_token; };
+const tok = (user) => mockToken(mock.base, user); // signed in through the mock's pi.flow
 
 test('JSON and a single SSE frame both parse', async () => {
   const t = await tok();
@@ -21,10 +22,10 @@ test('JSON and a single SSE frame both parse', async () => {
   mock.config.sse = false;
   assert.ok(a.length > 10); assert.deepEqual(a, b);
 });
-test('role-gated lists: viewer sees read tools only, admin sees all', async () => {
-  const get = async (id) => { const r = await fetch(`${mock.base}/e/as/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `grant_type=client_credentials&client_id=${id}&client_secret=s` }); const t = (await r.json()).access_token; return createMcpClient({ url: `${mock.base}/mcp/e`, getAuth: async () => ['Authorization', `Bearer ${t}`] }).listTools(); };
-  const v = await get('viewer-app'); const a = await get('admin-app');
-  assert.ok(v.length < a.length);
+test('role-gated lists: the signed-in mock.viewer sees the 18 read tools only, mock.admin sees all 33', async () => {
+  const get = async (user) => { const t = await tok(user); return createMcpClient({ url: `${mock.base}/mcp/e`, getAuth: async () => ['Authorization', `Bearer ${t}`] }).listTools(); };
+  const v = await get(MOCK_LOGIN.viewer); const a = await get(MOCK_LOGIN.username);
+  assert.equal(v.length, 18); assert.equal(a.length, 33);
   assert.ok(v.every((t) => /^(list|get|search|describe)/.test(t.name)));
   assert.ok(a.some((t) => t.name === 'deleteUser') && !v.some((t) => t.name === 'deleteUser'));
 });

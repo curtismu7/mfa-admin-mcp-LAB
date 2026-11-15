@@ -5,7 +5,7 @@
       "name": "MFA Admin MCP LAB",
       "catalogId": "D132",
       "kind": "Tester",
-      "description": "Connect to PingOne's hosted MCP server (worker or interactive admin sign-in) or any MCP server, list its tools with a safety class, and call them read-only by default. Mock by default; Live is owner-run.",
+      "description": "Connect to PingOne's hosted MCP server (your own admin sign-in) or any MCP server, list its tools with a safety class, and call them read-only by default. Mock by default; Live is owner-run.",
       "url": "http://localhost:7815",
       "healthPath": "/api/health",
       "composeFile": "mfa-admin-mcp-LAB/docker-compose.yml",

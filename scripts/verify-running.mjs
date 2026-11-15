@@ -24,13 +24,22 @@ check(page.status === 200 && /<div id="root"/.test(page.text) && /<title>[^<]*Pi
 const bad = await new Promise((resolve) => { const r = http.request({ host: '127.0.0.1', port: Number(hostPort), path: '/api/connections', headers: { Host: 'evil.example' } }, (res) => { res.resume(); resolve(res.statusCode); }); r.on('error', () => resolve(null)); r.end(); });
 check(bad === 403, 'a non-loopback Host header is refused');
 
-const w = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify worker', region: 'com', envId: ENV, endpointStyle: 'api', auth: 'worker', clientId: 'viewer-demo', clientSecret: 'demo-secret' })).json;
+// The mock demo is a user sign-in (pi.flow): the tools it lists follow the mock account that signs in, not the client id.
+const refused = await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify worker', region: 'com', envId: ENV, auth: 'worker', clientId: 'x', clientSecret: 'demo-secret' });
+check(refused.status === 400 && /user sign-in/.test(refused.json?.message) && !refused.text.includes('demo-secret'), 'a worker (client_credentials) PingOne connection is refused, without echoing the secret');
+const w = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify sign-in', region: 'com', envId: ENV, clientId: 'mock-native-app' })).json;
+const signInAs = async (id, username) => {
+  const s = (await call('POST', `/api/connections/${id}/login/start`, {})).json;
+  await call('POST', `/api/connections/${id}/login/step`, { loginId: s.loginId, action: 'password', username, password: s.mockLogin.password });
+  return (await call('POST', `/api/connections/${id}/login/step`, { loginId: s.loginId, action: 'otp', otp: s.mockLogin.otp })).json;
+};
+await signInAs(w.id, 'mock.viewer');
 const viewer = (await call('GET', `/api/connections/${w.id}/tools`)).json;
-check(viewer.count === 8 && viewer.byClass.write === 0, `viewer role lists ${viewer.count} tools, all read`);
-check(!JSON.stringify(w).includes('demo-secret'), 'the connection view never returns the client secret');
-const role = await call('POST', `/api/connections/${w.id}/role`, { role: 'admin' });
+check(viewer.count === 18 && viewer.byClass.write === 0, `mock.viewer lists ${viewer.count} tools, all read`);
+await call('POST', `/api/connections/${w.id}/logout`, {});
+await signInAs(w.id, 'mock.admin');
 const admin = (await call('GET', `/api/connections/${w.id}/tools`)).json;
-check(role.status === 200 && admin.count === 21 && admin.byClass.write > 0 && admin.byClass.destructive > 0, `admin role lists ${admin.count} tools including write and destructive`);
+check(admin.count === 33 && admin.byClass.write > 0 && admin.byClass.destructive > 0, `mock.admin lists ${admin.count} tools including write and destructive`);
 const scan = (await call('POST', `/api/connections/${w.id}/scan`, {})).json;
 check(scan.summary?.total === 0, 'scan of the mock is clean');
 const read = await call('POST', `/api/connections/${w.id}/call`, { tool: 'listUsers', arguments: { environmentId: ENV } });
@@ -52,7 +61,7 @@ check(['blocked:writes_disabled', 'blocked:confirm_required', 'blocked:args_hash
 
 // Interactive: the sign-in is a native flow (pi.flow). The page shows the form and this server drives the steps at the (mock) authorization
 // server, so there is no callback, no redirect URI and nothing to register: the run works the same on any published port.
-const i = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify interactive', region: 'com', envId: ENV, endpointStyle: 'api', auth: 'interactive', clientId: 'admin-demo' })).json;
+const i = (await call('POST', '/api/connections', { kind: 'pingone', offline: true, label: 'verify interactive', region: 'com', envId: ENV, auth: 'interactive', clientId: 'mock-native-app' })).json;
 const start = await call('POST', `/api/connections/${i.id}/login/start`, {});
 check(start.status === 200 && start.json.step === 'password' && start.json.loginId && start.json.authorizeUrl === undefined, 'login/start opens a native flow and asks for the password (no redirect URL is handed out)');
 const m = start.json.mockLogin ?? {};

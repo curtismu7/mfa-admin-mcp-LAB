@@ -1,12 +1,15 @@
 // Endpoint shapes. Sources:
-//  - MCP endpoint, style "api": https://api.pingone.{region}/v1/environments/{envId}/mcp  (pingone-mcp skill, SKILL.md).
-//  - MCP endpoint, style "mcp-host": https://mcp.pingone.{region}/admin/{envId}/mcp  (AI-DEMO2 services/mcpPingOneHttpAdapter.js _mcpUrl).
-//    The two sources differ; UNVERIFIED which one a given tenant answers on, so the style is a per-connection choice.
+//  - MCP endpoint, style "mcp-host" (the default): https://mcp.pingone.{region}/admin/{envId}/mcp. The one Ping's early-access MCP docs
+//    name (developer.pingidentity.com build-with-ai/pingone-mcp-server, p1-client-configuration), and its protected-resource metadata
+//    (/.well-known/oauth-protected-resource/admin/{envId}/mcp, measured by the owner 2026-11-15) names this URL as the resource and
+//    https://auth.pingone.{region}/{envId}/as as the issuer.
+//  - MCP endpoint, style "api": https://api.pingone.{region}/v1/environments/{envId}/mcp  (pingone-mcp skill, SKILL.md). Kept as a
+//    per-connection choice; UNVERIFIED that a tenant answers on it.
 //  - Authorization server: https://auth.pingone.{region}/{envId}/as/{token|authorize}  (AI-DEMO2 routes/mcpPingOneAdminAuth.js).
 //  - /jwks under the same base is the usual OIDC location: UNVERIFIED for PingOne by us.
 // Verified region suffixes (skill): com, eu, asia, ca. Any other suffix is refused unless the operator opts in
-// (connection field regionOther:true), because the region is spliced into the host that receives the worker secret
-// (auth.pingone.<region>): a typo like com.xyz would send it to a host PingOne does not own.
+// (connection field regionOther:true), because the region is spliced into the host that receives the sign-in (the password and
+// one-time code pass through to auth.pingone.<region>) and the access token: a typo like com.xyz would send them to a host PingOne does not own.
 export const VERIFIED_REGIONS = ['com', 'eu', 'asia', 'ca'];
 const REGION_RE = /^[a-z]{2,6}(\.[a-z]{2,6})?$/;
 const ENV_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,9 +29,9 @@ export function asBase({ region, envId, offlineBase, idp, idpBaseUrl }) {
 }
 export function mcpUrl({ region, envId, endpointStyle, offlineBase }) {
   if (offlineBase) return `${offlineBase}/mcp/${envId}`;
-  return endpointStyle === 'mcp-host'
-    ? `https://mcp.pingone.${region}/admin/${envId}/mcp`
-    : `https://api.pingone.${region}/v1/environments/${envId}/mcp`;
+  return endpointStyle === 'api'
+    ? `https://api.pingone.${region}/v1/environments/${envId}/mcp`
+    : `https://mcp.pingone.${region}/admin/${envId}/mcp`; // mcp-host, also when no style is given
 }
 
 // Hosts a saved live connection may reach: the token / authorization host and the MCP host for PingOne, or the one server URL the

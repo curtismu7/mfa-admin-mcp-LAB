@@ -86,15 +86,16 @@ test("the toggle decides which connections are shown: the mock demo in Mock, the
   render(<App />);
   expect(await screen.findByText("Mock demo one")).toBeInTheDocument();
   expect(screen.queryByText("A real server")).toBeNull();
-  expect(screen.getByRole("button", { name: /Add mock demo \(worker/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add mock demo (sign in)" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Save connection" })).toBeNull();
   await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false));
   await user.selectOptions(screen.getByTestId("mode-select"), "real");
   expect(await screen.findByText("A real server")).toBeInTheDocument();
   expect(screen.queryByText("Mock demo one")).toBeNull();
-  expect(screen.queryByRole("button", { name: /Add mock demo \(worker/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add mock demo (sign in)" })).toBeNull();
   expect(screen.getByRole("button", { name: "Save connection" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add banking MCP" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /PingOne worker/ })).toBeNull(); // no worker preset: a PingOne connection is a user sign-in
 });
 
 test("Live is refused when the server says a guard fails: the page stays in Mock, says why, and nothing is sent", async () => {
@@ -118,7 +119,7 @@ test("Reset calls the server, clears the page state and keeps the saved connecti
   render(<App />);
   await user.selectOptions(await screen.findByLabelText("Speed"), "4");
   await user.click(screen.getByRole("button", { name: "Simulate" }));
-  expect(screen.getByTestId("caption")).toHaveTextContent(/Step 1 of 5/);
+  expect(screen.getByTestId("caption")).toHaveTextContent(/Step 1 of 7/);
   await user.click(screen.getByTestId("reset"));
   await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/reset")).toBe(true));
   await waitFor(() => expect(screen.getByTestId("caption")).toHaveTextContent(/Press Simulate/));
@@ -132,27 +133,37 @@ test("health card: count, role hint, identity and expiry countdown; no token any
   await waitFor(() => expect(screen.getByTestId("tool-count")).toHaveTextContent("8"));
   const card = screen.getByTestId("health-card");
   expect(card).toHaveTextContent(/short list usually means missing admin roles/);
-  expect(screen.getByTestId("identity")).toHaveTextContent("worker token set");
+  expect(screen.getByTestId("identity")).toHaveTextContent("signed in as mock-admin-user");
   expect(screen.getByTestId("expiry")).toHaveTextContent(/\dm \d\ds/);
   expect(document.body.textContent).not.toMatch(/mock-at-|Bearer /);
 });
 
-test("wizard: secret is write-only, cleared after saving, and the card shows set", async () => {
+test("wizard: a PingOne connection is a user sign-in with no secret field (the documented mcp-host endpoint by default); a custom server's header value is write-only, cleared after saving, and the card shows set", async () => {
   const api = fakeApi({ conns: [] });
   render(<App />);
   const user = userEvent.setup();
   await pressLive(user);
   const wiz = (await screen.findAllByLabelText(/Client id/))[0].closest("form");
+  expect(within(wiz).queryByLabelText(/Client secret/)).toBeNull();
+  expect(within(wiz).queryByLabelText(/Worker application/)).toBeNull();
+  expect(within(wiz).getByTestId("auth-note")).toHaveTextContent(/takes a user sign-in/);
   await user.type(within(wiz).getByLabelText(/Environment id/), "11111111-2222-4333-8444-555555555555");
-  await user.type(within(wiz).getByLabelText("Client id"), "my-worker");
-  const secret = within(wiz).getByLabelText(/Client secret/);
+  await user.type(within(wiz).getByLabelText("Client id"), "my-native-app");
+  await user.click(screen.getByRole("button", { name: "Save connection" }));
+  await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections")).toBe(true));
+  const saved = api.calls.find((c) => c.method === "POST" && c.url === "/api/connections").body;
+  expect(saved).toMatchObject({ kind: "pingone", clientId: "my-native-app", endpointStyle: "mcp-host" });
+  expect(saved.clientSecret).toBeUndefined(); expect(saved.auth).toBeUndefined();
+  await user.selectOptions(within(wiz).getByLabelText("Type"), "custom");
+  await user.type(within(wiz).getByLabelText("Server URL"), "https://mcp.example/mcp");
+  const secret = within(wiz).getByLabelText(/Header value/);
   expect(secret).toHaveAttribute("type", "password");
   await user.type(secret, "super-secret-value");
   await user.click(screen.getByRole("button", { name: "Save connection" }));
-  await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.clientSecret === "super-secret-value")).toBe(true));
-  await waitFor(() => expect(within(wiz).getByLabelText(/Client secret/)).toHaveValue(""));
+  await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.token === "super-secret-value")).toBe(true));
+  await waitFor(() => expect(within(wiz).getByLabelText(/Header value/)).toHaveValue(""));
   expect(within(wiz).queryByText("super-secret-value")).toBeNull();
-  expect(await screen.findByText(/secret: set/)).toBeInTheDocument();
+  expect(await screen.findByText(/credential: set/)).toBeInTheDocument();
 });
 
 test("interactive wizard says to use a public native app and shows the placeholder redirect URI with a working Copy button", async () => {
@@ -163,8 +174,9 @@ test("interactive wizard says to use a public native app and shows the placehold
   const user = userEvent.setup();
   await pressLive(user);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-  await user.click(await screen.findByLabelText(/Interactive admin sign-in/));
-  await waitFor(() => expect(screen.getByTestId("redirect-uri")).toHaveTextContent(REDIRECT));
+  await waitFor(() => expect(screen.getByTestId("redirect-uri")).toHaveTextContent(REDIRECT)); // always shown: every PingOne connection signs in
+  expect(screen.getByLabelText(/MCP endpoint shape/)).toHaveValue("mcp-host");
+  expect(within(screen.getByLabelText(/MCP endpoint shape/)).getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringMatching(/^mcp\.pingone.*documented by Ping, default/), expect.stringMatching(/^api\.pingone.*UNVERIFIED/)]);
   await user.click(screen.getByRole("button", { name: "Copy" }));
   expect(writeText).toHaveBeenCalledWith(REDIRECT);
   const box = screen.getByTestId("redirect-box");
@@ -175,11 +187,38 @@ test("interactive wizard says to use a public native app and shows the placehold
   expect(screen.queryByLabelText(/Client secret/)).toBeNull();
 });
 
-test("mock demo button creates a worker connection with the viewer role", async () => {
+test("the mock demo button creates an offline user sign-in (no secret), is not tested before anyone signs in, names both mock accounts and offers P1 login", async () => {
   const api = fakeApi({ conns: [] });
   render(<App />);
-  await userEvent.setup().click(await screen.findByRole("button", { name: /Add mock demo \(worker/ }));
-  await waitFor(() => expect(api.calls.find((c) => c.method === "POST" && c.url === "/api/connections").body).toMatchObject({ offline: true, clientId: "viewer-demo", auth: "worker" }));
+  expect(await screen.findByTestId("demo-accounts")).toHaveTextContent(/mock\.admin.*every tool.*mock\.viewer.*read tools/);
+  await userEvent.setup().click(await screen.findByRole("button", { name: "Add mock demo (sign in)" }));
+  await waitFor(() => expect(api.calls.find((c) => c.method === "POST" && c.url === "/api/connections").body).toMatchObject({ offline: true, auth: "interactive", endpointStyle: "mcp-host" }));
+  expect(api.calls.find((c) => c.method === "POST" && c.url === "/api/connections").body.clientSecret).toBeUndefined();
+  expect(await screen.findByRole("button", { name: "P1 login" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByTestId("live")).toHaveTextContent(/sign in as mock\.admin .* or mock\.viewer/));
+  expect(api.calls.some((c) => c.url.endsWith("/test"))).toBe(false); // nobody is signed in yet, so nothing is tested into an error
+  expect(screen.getByTestId("identity")).toHaveTextContent("not signed in");
+});
+
+test("first load tests a signed-in mock demo on its own, but not one that is not signed in", async () => {
+  const signed = fakeApi();
+  const first = render(<App />);
+  await waitFor(() => expect(signed.calls.some((c) => c.method === "POST" && c.url === "/api/connections/c1/test")).toBe(true));
+  first.unmount();
+  const unsigned = fakeApi({ conns: [conn({ auth_status: { signedIn: false } })] });
+  render(<App />);
+  expect(await screen.findByRole("button", { name: "P1 login" })).toBeInTheDocument();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(unsigned.calls.some((c) => c.url.endsWith("/test"))).toBe(false);
+});
+
+test("a worker connection saved by an older build says it cannot be used and offers no sign-in or role switch", async () => {
+  fakeApi({ conns: [conn({ auth: "worker", legacyWorker: true, auth_status: { signedIn: false } })] });
+  render(<App />);
+  expect(await screen.findByTestId("legacy-worker")).toHaveTextContent(/older build.*user sign-in/);
+  expect(screen.queryByRole("button", { name: "P1 login" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Demo role" })).toBeNull();
+  expect(screen.getByTestId("identity")).toHaveTextContent(/cannot call/);
 });
 
 test("tools explorer: groups, search, badges with the why, writes-off state; server text is inert", async () => {
@@ -347,17 +386,15 @@ test("diagram: Simulate walks steps with a live caption, Reset restores; speed c
   expect(screen.getByTestId("caption")).toHaveAttribute("aria-live", "polite");
   await waitFor(() => expect(screen.getByRole("button", { name: "Simulate" })).toBeEnabled()); // the diagram is fetched by name first
   expect(await screen.findByText("Hosted PingOne MCP server")).toBeInTheDocument(); // a box drawn from the fetched data
+  expect(within(screen.getByLabelText("Sign-in model")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Interactive admin sign-in (pi.flow + PKCE)"]); // the one model: a user sign-in
   await user.selectOptions(screen.getByLabelText("Speed"), "4");
   await user.click(screen.getByRole("button", { name: "Simulate" }));
-  expect(screen.getByTestId("caption")).toHaveTextContent(/Step 1 of 5/);
-  await waitFor(() => expect(screen.getByTestId("caption")).toHaveTextContent(/Step 5 of 5/), { timeout: 4000 });
-  expect(screen.getByTestId("caption")).toHaveTextContent(/UNVERIFIED that the hosted server accepts a worker token/);
+  expect(screen.getByTestId("caption")).toHaveTextContent(/Step 1 of 7: .*resource \(RFC 8707\)/);
+  await waitFor(() => expect(screen.getByTestId("caption")).toHaveTextContent(/Step 7 of 7/), { timeout: 6000 });
+  expect(screen.getByTestId("caption")).toHaveTextContent(/that admin's permissions/);
   const diagMain = screen.getByRole("main");
   await user.click(within(diagMain).getByRole("button", { name: "Reset" }));
   expect(screen.getByTestId("caption")).toHaveTextContent(/Press Simulate/);
-  await waitFor(() => expect(screen.getByRole("option", { name: "Interactive admin sign-in (pi.flow + PKCE)" })).toBeInTheDocument());
-  await user.selectOptions(screen.getByLabelText("Sign-in model"), "interactive");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Simulate" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Simulate" }));
   expect(screen.getByTestId("caption")).toHaveTextContent(/Step 1 of 7/);
   await user.click(screen.getByTestId("presenter"));
@@ -461,7 +498,7 @@ test("a sign-in that the server refuses says why next to the buttons, not only i
 
 // A sign-in as the page sees it: login/start answers the first step, login/step answers the rest. The fake keeps the card's status in sync.
 function signInApi(over = {}) {
-  const mockLogin = { username: "mock.admin", password: "mock-password", otp: "123456" };
+  const mockLogin = { username: "mock.admin", password: "mock-password", otp: "123456", viewer: "mock.viewer" };
   const steps = [];
   const api = fakeApi({ conns: [conn({ id: "c1", label: "Mock sign-in", auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } })], handlers: {
     "POST /api/connections/:id/login/start": (_b, _s, json) => json(200, { ok: true, loginId: "login-1", step: "password", mockLogin }),
@@ -483,6 +520,7 @@ test("P1 login opens a dialog (no redirect): password, then the one-time code, t
   await user.click(await screen.findByRole("button", { name: "P1 login" }));
   const dlg = await screen.findByTestId("login-dialog");
   expect(within(dlg).getByTestId("login-mock")).toHaveTextContent(/mock\.admin.*mock-password.*123456/);
+  expect(within(dlg).getByTestId("login-mock")).toHaveTextContent(/mock\.viewer \(a viewer: read tools only\)/); // the presenter knows the second account exists
   expect(within(dlg).getByTestId("login-username")).toHaveValue("mock.admin"); // the mock account is filled in
   const pw = within(dlg).getByTestId("login-password");
   await user.clear(pw); await user.type(pw, "wrong-password");

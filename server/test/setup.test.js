@@ -71,6 +71,8 @@ test('apply: live refused; then with the stub the app is created, the secret is 
     assert.ok(!r.text.includes('sentinel-secret-abc'), 'the worker secret never comes back');
     assert.equal(r.json.connection.clientId, 'new-app-id');
     assert.equal(r.json.connection.redirectUri, PI_FLOW_REDIRECT_URI);
+    assert.equal(r.json.connection.auth, 'interactive'); assert.equal(r.json.connection.endpointStyle, 'mcp-host', 'the documented MCP endpoint');
+    assert.equal('clientSecret' in r.json.connection, false, 'the saved connection is a user sign-in: no worker secret in it');
     // the stub saw a client_credentials mint with the worker pair:
     const mint = fetched.find((f) => f.url.endsWith('/as/token'));
     assert.ok(mint.body.includes('grant_type=client_credentials'));
@@ -161,5 +163,5 @@ test('defaults: PINGONE_ENV_ID and PINGONE_REGION from worker.env, with no crede
   fs.writeFileSync(file, 'PINGONE_ENV_ID=not-a-uuid\nPINGONE_REGION=com.evil\n');
   assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: file })).json, { envId: null, region: null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'a malformed value never reaches a form');
   assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env') })).json, { envId: null, region: null, piFlowRedirectUri: PI_FLOW_REDIRECT_URI });
-  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env'), PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'ca' })).json, { envId: ENV_ID, region: 'ca', piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'the process env is the fallback, as for the preset');
+  assert.deepEqual((await get({ MFAADM_WORKER_ENV_FILE: path.join(dir, 'absent.env'), PINGONE_ENVIRONMENT_ID: ENV_ID, PINGONE_REGION: 'ca' })).json, { envId: ENV_ID, region: 'ca', piFlowRedirectUri: PI_FLOW_REDIRECT_URI }, 'the process env is the fallback');
 });

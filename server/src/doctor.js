@@ -35,7 +35,7 @@ export function runChecks({ env = process.env } = {}) {
   const p = port(env);
   add('port-range', portAllowed(p) ? 'pass' : 'fail', portAllowed(p) ? (portInRange(p) ? `server port ${p} (the app's port)` : `server port ${p} (e2e harness: outside the app's port, allowed only under the e2e guard)`) : `server port ${p} is outside ${PORT_MIN}-${PORT_MAX}`);
 
-  try { const d = createDiagrams(); add('diagrams', 'pass', `${d.names.length} diagrams are valid diagram-studio/1 data (${d.names.join(', ')})`); }
+  try { const d = createDiagrams(); add('diagrams', 'pass', `${d.names.length} diagram${d.names.length === 1 ? ' is' : 's are'} valid diagram-studio/1 data (${d.names.join(', ')})`); }
   catch (e) { add('diagrams', 'fail', e.message); }
 
   add('outbound', 'info', 'Mock makes no outbound call. Live reaches only the hosts of the saved connection you use (https, or http on loopback), through the netguard; a typed name that resolves to a private address is not caught, only literal private addresses are refused');

@@ -4,7 +4,8 @@ import * as api from "../api.js";
 // Set up hosted PingOne MCP: paste a Management worker client id + secret once;
 // the lab checks the environment, finds or creates its own public native sign-in
 // application (pi.flow), and saves the connection. The worker secret is sent to
-// this lab's server only, used for one token mint, and never stored.
+// this lab's server only, used for one Management API token mint, and never stored.
+// The worker never calls the MCP server: the saved connection is an admin user's sign-in.
 export default function Setup({ onCreated, say, defaults }) {
   const [f, setF] = useState({ region: defaults.region || "com", envId: defaults.envId || "", workerClientId: "", workerClientSecret: "" });
   // The default environment arrives after the first render; fill it unless the user has already typed one.
@@ -42,7 +43,7 @@ export default function Setup({ onCreated, say, defaults }) {
     <form className="card" onSubmit={check ? apply : checkEnv} aria-labelledby="setup-h" data-testid="setup">
       <h2 id="setup-h">Set up hosted PingOne MCP (automatic)</h2>
       <p>The lab configures your tenant for you: it finds or creates its own public native sign-in application (PingOne's native flow, pi.flow, with authorization code + PKCE; no client secret exists), and saves the connection. All you add afterwards is your admin sign-in: username, password and the code PingOne sends you.</p>
-      <p className="hint">Setup uses a <strong>Management worker application</strong> (client_credentials) whose identity can read and update applications — e.g. an Environment Admin role. If the lab's <code>~/.config/mfa-admin-mcp/worker.env</code> exists (PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET), it is used automatically and nothing is pasted. Otherwise paste the client id and secret below: used for one token mint, never stored; only this lab's server sees them.</p>
+      <p className="hint" data-testid="setup-worker-scope">Setup uses a <strong>Management worker application</strong> (client_credentials) whose identity can read and update applications — e.g. an Environment Admin role. It calls the PingOne <strong>Management API only</strong>, to create the sign-in application; it is never used to call the MCP server, which takes your admin sign-in. If the lab's <code>~/.config/mfa-admin-mcp/worker.env</code> exists (PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET), it is used automatically and nothing is pasted. Otherwise paste the client id and secret below: used for one token mint, never stored; only this lab's server sees them.</p>
       <div className="grid2">
         <label className="field">Region
           <select value={f.region} onChange={set("region")}>{["com", "eu", "asia", "ca"].map((r) => <option key={r}>{r}</option>)}</select>
@@ -62,7 +63,7 @@ export default function Setup({ onCreated, say, defaults }) {
           <label className="field">Worker client secret
             <input type="password" value={f.workerClientSecret} onChange={set("workerClientSecret")} required autoComplete="new-password" />
           </label>
-          <p className="hint">Used once to mint a Management token, then discarded (write-only, never stored).</p>
+          <p className="hint">Used once to mint a Management API token, then discarded (write-only, never stored). Not sent to the MCP server.</p>
         </div>
       )}
       {err && <p className="err-text" role="alert">{err}</p>}

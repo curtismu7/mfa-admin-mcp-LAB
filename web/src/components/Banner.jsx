@@ -7,7 +7,7 @@ export function bannerText(mode, conn) {
     return "MOCK mode, simulated. An in-process mock of PingOne's hosted MCP server and authorization server answers on this machine. The tool catalog is an illustrative sample, not a recording, and its write tools change only an in-memory fake tenant. Nothing leaves this machine.";
   }
   const where = conn ? ` In use: ${conn.label}.` : " No Live connection is selected yet: add one on Connections.";
-  return `LIVE mode, owner-run. Calls go to the real server of the connection you use, with the credentials you saved, and act on it.${where} UNVERIFIED against a real tenant: whether the hosted PingOne server accepts a worker token, and which endpoint shape a tenant answers on (docs/live-checks.md).`;
+  return `LIVE mode, owner-run. Calls go to the real server of the connection you use, with the credentials you saved, and act on it.${where} A PingOne connection is your own admin sign-in: the tools you see follow your admin roles. UNVERIFIED against a real tenant: whether the hosted PingOne server accepts a token from this lab's own sign-in application (docs/live-checks.md).`;
 }
 
 export default function Banner({ mode, conn }) {

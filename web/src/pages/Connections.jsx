@@ -7,7 +7,7 @@ import { DEMO_ENV_ID } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
 
 const REGIONS = ["com", "eu", "asia", "ca"];
-const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", auth: "worker", endpointStyle: "api", idp: "pingone", idpBaseUrl: "", clientId: "", clientSecret: "", tokenAuthMethod: "basic", url: "", authHeader: "Authorization", token: "" };
+const EMPTY = { kind: "pingone", label: "", region: "com", envId: "", endpointStyle: "mcp-host", idp: "pingone", idpBaseUrl: "", clientId: "", url: "", authHeader: "Authorization", token: "" };
 
 function Field({ label, children, hint }) {
   return <label className="field">{label}{children}{hint && <small>{hint}</small>}</label>;
@@ -26,7 +26,7 @@ function Wizard({ onCreated, say, defaults }) {
   async function submit(e) {
     e.preventDefault(); setErr("");
     const body = f.kind === "pingone"
-      ? { kind: "pingone", label: f.label, region: f.region, envId: f.envId, auth: f.auth, endpointStyle: f.endpointStyle, idp: f.idp, ...(f.idp === "pf" ? { idpBaseUrl: f.idpBaseUrl } : {}), clientId: f.clientId, ...(f.auth === "worker" ? { clientSecret: f.clientSecret, tokenAuthMethod: f.tokenAuthMethod } : { redirectUri: uri }) }
+      ? { kind: "pingone", label: f.label, region: f.region, envId: f.envId, endpointStyle: f.endpointStyle, idp: f.idp, ...(f.idp === "pf" ? { idpBaseUrl: f.idpBaseUrl } : {}), clientId: f.clientId, redirectUri: uri }
       : { kind: f.kind, label: f.label, url: f.url, ...(f.token ? { authHeader: f.authHeader, token: f.token } : {}) };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { setErr(r.json?.message || "Could not save the connection."); return; }
@@ -68,30 +68,15 @@ function Wizard({ onCreated, say, defaults }) {
               </Field>
             )}
           </fieldset>
-          <fieldset className="seg-fs"><legend>Authentication</legend>
-            <p className="hint" data-testid="worker-unverified">UNVERIFIED: sources disagree on whether the hosted PingOne MCP server accepts a worker (client_credentials) token. One source reports a 401 audience mismatch, the pingone-mcp skill says it is supported. If it is rejected, use interactive sign-in. See docs/live-checks.md item 2.</p>
-            <label><input type="radio" name="auth" checked={f.auth === "worker"} onChange={() => setF({ ...f, auth: "worker" })} /> Worker application (client_credentials, no human)</label>
-            <label><input type="radio" name="auth" checked={f.auth === "interactive"} onChange={() => setF({ ...f, auth: "interactive" })} /> Interactive admin sign-in (authorization code + PKCE)</label>
-          </fieldset>
+          <p className="hint" data-testid="auth-note">Authentication: <strong>your own admin sign-in</strong> (PingOne's native flow, authorization code + PKCE). The hosted PingOne MCP server takes a user sign-in, not a worker application's token; the tools you see follow your admin roles (Ping's MCP docs).</p>
           <Field label="Client id"><input value={f.clientId} onChange={set("clientId")} required spellCheck="false" autoComplete="off" /></Field>
-          {f.auth === "worker" ? (
-            <div className="grid2">
-              <Field label="Client secret" hint="Write-only: kept on this machine's server, never shown again.">
-                <input type="password" value={f.clientSecret} onChange={set("clientSecret")} required autoComplete="new-password" />
-              </Field>
-              <Field label="Token endpoint auth">
-                <select value={f.tokenAuthMethod} onChange={set("tokenAuthMethod")}><option value="basic">Basic (client_secret_basic)</option><option value="post">Form post (client_secret_post)</option></select>
-              </Field>
-            </div>
-          ) : (
-            <div className="redirect" data-testid="redirect-box">
-              <p><strong>Use a public native application.</strong> Easiest: use <strong>Set up hosted PingOne MCP</strong> above, which creates one. By hand: an OpenID Connect native application with authorization code + PKCE, token endpoint authentication <strong>None</strong>, and this redirect URI (PingOne requires one; nothing is served at it):</p>
-              <p className="row"><code data-testid="redirect-uri">{uri}</code> <button type="button" onClick={copy}>Copy</button></p>
-              <p className="hint">Signing in is PingOne's native flow (pi.flow): this app shows the sign-in form itself and sends nothing to a callback. An application that needs a client secret cannot be used here. UNVERIFIED: the scopes PingOne grants, and whether the hosted MCP server accepts the resulting token.</p>
-            </div>
-          )}
-          <Field label="MCP endpoint shape" hint="Two shapes appear in our sources and we have not verified which one your tenant answers on.">
-            <select value={f.endpointStyle} onChange={set("endpointStyle")}><option value="api">api.pingone.{"{region}"}/v1/environments/{"{envId}"}/mcp (skill)</option><option value="mcp-host">mcp.pingone.{"{region}"}/admin/{"{envId}"}/mcp (AI-DEMO2)</option></select>
+          <div className="redirect" data-testid="redirect-box">
+            <p><strong>Use a public native application.</strong> Easiest: use <strong>Set up hosted PingOne MCP</strong> above, which creates one. By hand: an OpenID Connect native application with authorization code + PKCE, token endpoint authentication <strong>None</strong>, and this redirect URI (PingOne requires one; nothing is served at it):</p>
+            <p className="row"><code data-testid="redirect-uri">{uri}</code> <button type="button" onClick={copy}>Copy</button></p>
+            <p className="hint">Signing in is PingOne's native flow (pi.flow): this app shows the sign-in form itself and sends nothing to a callback. An application that needs a client secret cannot be used here. UNVERIFIED: the scopes PingOne grants, and whether the hosted MCP server accepts a token from this lab's own sign-in application (docs/live-checks.md).</p>
+          </div>
+          <Field label="MCP endpoint shape" hint="Ping's MCP docs name the mcp.pingone shape (the default). The api.pingone shape comes from the pingone-mcp skill and is UNVERIFIED.">
+            <select value={f.endpointStyle} onChange={set("endpointStyle")}><option value="mcp-host">mcp.pingone.{"{region}"}/admin/{"{envId}"}/mcp (documented by Ping, default)</option><option value="api">api.pingone.{"{region}"}/v1/environments/{"{envId}"}/mcp (pingone-mcp skill, UNVERIFIED)</option></select>
           </Field>
         </>
       ) : (
@@ -124,15 +109,14 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
   }
   const setWrites = (on) => act(() => api.post(`/api/connections/${c.id}/settings`, { allowWrites: on }), on ? `Writes enabled for ${c.label}.` : `Writes turned off for ${c.label}.`);
   const pfReady = c.offline === true || (c.idp === "pf" && Boolean(c.idpBaseUrl)); // the mock simulates PingFederate; a live connection needs its own PingFederate base URL
-  const role = c.clientId === "admin-demo" ? "admin" : c.clientId === "viewer-demo" ? "viewer" : null;
   return (
     <li className="card" data-state={active ? "active" : undefined} data-testid="conn-card">
       <div className="row between">
         <h3><Untrusted text={c.label} /></h3>
-        <span className="chip">{c.kind === "pingone" ? (c.offline ? "mock demo" : `PingOne ${c.auth}`) : c.kind}</span>
+        <span className="chip">{c.kind === "pingone" ? (c.offline ? "mock demo" : "PingOne sign-in") : c.kind}</span>
       </div>
       <p className="meta">
-        {c.kind === "pingone" ? <>Region {c.region}, environment <code>{c.envId}</code>, client <code>{c.clientId}</code>, secret: {c.auth === "worker" ? (c.clientSecret || "not set") : "none (public client)"}</> : <>URL <code>{c.url}</code>, credential: {c.token || "not set"}</>}
+        {c.kind === "pingone" ? <>Region {c.region}, environment <code>{c.envId}</code>, client <code>{c.clientId}</code>, secret: none (public client)</> : <>URL <code>{c.url}</code>, credential: {c.token || "not set"}</>}
       </p>
       <div className="row wrap">
         <button type="button" aria-pressed={active} onClick={() => onSelect(c.id)}>{active ? "In use" : "Use this connection"}</button>
@@ -145,13 +129,9 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
                 title={pfReady ? "Interactive sign-in at PingFederate (native flow, authorization code + PKCE)" : PF_NEEDS}>PF login</button>
               {!pfReady && <small className="hint" data-testid="pf-hint">{PF_NEEDS}</small>}
             </span>)}
-        {role && c.auth === "worker" && (
-          <span className="seg" role="group" aria-label="Demo role">
-            {["viewer", "admin"].map((r) => <button key={r} type="button" aria-pressed={role === r} onClick={() => act(() => api.post(`/api/connections/${c.id}/role`, { role: r }), `Demo role is now ${r}. Test the connection again.`).then(() => onTest(c.id, { modal: false }))}>{r}</button>)}
-          </span>
-        )}
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
       </div>
+      {c.legacyWorker && <p className="notice" data-state="bad" data-testid="legacy-worker">Saved by an older build for a worker (client_credentials) token, which the hosted PingOne MCP server does not take: it needs a user sign-in. Delete this connection and add a PingOne one (Setup creates the sign-in application).</p>}
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}
       {login && <LoginDialog conn={c} idp={login.idp} start={login.start} onClose={() => setLogin(null)}
         onDone={(as) => { setLogin(null); say(`Signed in${as ? ` as ${as}` : ""}.`); onChange(); onTest(c.id, { modal: false }); }} />}
@@ -165,12 +145,12 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
 
 export default function Connections({ defaults, mode, conns, activeId, onSelect, reload, tests, testBusy, runTest, now, say }) {
   const active = conns.find((c) => c.id === activeId);
-  async function demo(kind) {
-    const body = { kind: "pingone", offline: true, label: kind === "worker" ? "Mock demo (viewer/admin switch)" : "Mock demo (interactive sign-in)", region: "com", envId: DEMO_ENV_ID, endpointStyle: "api", auth: kind,
-      clientId: kind === "worker" ? "viewer-demo" : "admin-demo", ...(kind === "worker" ? { clientSecret: "demo-secret" } : {}) };
+  // The mock demo is a user sign-in like a real PingOne connection: the tools it lists follow the mock account that signs in.
+  async function demo() {
+    const body = { kind: "pingone", offline: true, label: "Mock demo (sign in as mock.admin or mock.viewer)", region: "com", envId: DEMO_ENV_ID, endpointStyle: "mcp-host", auth: "interactive", clientId: "mock-native-app" };
     const r = await api.post("/api/connections", body);
     if (!r.ok) { say(r.json?.message || "Could not add the demo."); return; }
-    say("Mock demo added."); await reload(); onSelect(r.json.id); if (kind === "worker") runTest(r.json.id, { modal: false });
+    say("Mock demo added. Press P1 login and sign in as mock.admin (every tool) or mock.viewer (read tools only)."); await reload(); onSelect(r.json.id);
   }
   async function preset(id, name) {
     const r = await api.post(`/api/presets/${id}`);
@@ -185,9 +165,9 @@ export default function Connections({ defaults, mode, conns, activeId, onSelect,
         <section className="card" aria-labelledby="demo-h">
           <h2 id="demo-h">Try the mock</h2>
           <p>The mock demo talks to an in-process mock of PingOne's hosted MCP server and authorization server on this machine. The tool catalog is an illustrative sample, not a recording, and its write tools change only an in-memory fake tenant.</p>
+          <p data-testid="demo-accounts">You sign in to it the way an administrator signs in to the real one, and the tools you see follow the account's roles: <code>mock.admin</code> sees every tool, <code>mock.viewer</code> only the read tools.</p>
           <div className="row wrap">
-            <button type="button" className="primary" onClick={() => demo("worker")}>Add mock demo (worker, viewer/admin switch)</button>
-            <button type="button" onClick={() => demo("interactive")}>Add mock demo with sign-in (interactive)</button>
+            <button type="button" className="primary" onClick={demo}>Add mock demo (sign in)</button>
           </div>
           <p className="hint">To connect a real PingOne tenant or MCP server, press Live in the header and add a connection (see the README, Mock and live modes).</p>
         </section>
@@ -195,11 +175,10 @@ export default function Connections({ defaults, mode, conns, activeId, onSelect,
       {mode === "live" && (
         <section className="card" aria-labelledby="presets-h">
           <h2 id="presets-h">Working demos</h2>
-          <p>One click each. Banking and OpenSearch are local MCP servers on this machine (they must be running). The PingOne worker reads its credentials from a local file outside this repo; the secret is never shown. You can still add your own connections below.</p>
+          <p>One click each. Banking and OpenSearch are local MCP servers on this machine (they must be running). For your PingOne tenant use Setup below: it creates the sign-in application, and you sign in as yourself. You can still add your own connections below.</p>
           <div className="row wrap">
             <button type="button" className="primary" onClick={() => preset("banking", "Banking MCP")}>Add banking MCP</button>
             <button type="button" className="primary" onClick={() => preset("opensearch", "OpenSearch MCP")}>Add OpenSearch MCP</button>
-            <button type="button" className="primary" onClick={() => preset("pingone", "PingOne standalone worker")}>Add PingOne worker</button>
           </div>
         </section>
       )}

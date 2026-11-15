@@ -13,7 +13,8 @@ const obj = (properties, required = []) => ({ type: 'object', properties, requir
 const S = { type: 'string' };
 const ENV = { environmentId: S };
 
-// role: 'viewer' sees only read tools; 'admin' sees all.
+// role: 'viewer' sees only read tools; 'admin' sees all. The role rides on the signed-in mock user (MOCK_USERS), as the tools a
+// real user sees depend on that user's admin roles (Ping's MCP docs); the client id plays no part.
 // MFA ADMINISTRATION — the lab's subject. Environment MFA settings, device-authentication
 // and FIDO (passkey) policies, notification policies, OATH tokens, and sender/delivery
 // settings for email, phone and WhatsApp.
@@ -60,11 +61,15 @@ const GENERAL_CATALOG = [
 const CATALOG = [...MFA_CATALOG, ...GENERAL_CATALOG];
 
 // The mock authorization server's native (pi.flow) sign-in. These accounts exist ONLY here; the dialog offers them for the mock connection.
-// mock.admin: password, then an SMS code. mock.nomfa: password only. mock.multi: password, a device choice (SMS or email), then the code.
-export const MOCK_LOGIN = { username: 'mock.admin', password: 'mock-password', otp: '123456' };
+// All share one password and one code. mock.admin: password, then an SMS code; every tool. mock.viewer: the same steps; read tools only.
+// mock.nomfa: password only. mock.multi: password, a device choice (SMS or email), then the code.
+export const MOCK_LOGIN = { username: 'mock.admin', password: 'mock-password', otp: '123456', viewer: 'mock.viewer' };
 const SMS = { id: 'mock-dev-sms', type: 'SMS', phone: '+1 *** *** 0142', usableStatus: { status: 'ENABLED' } };
 const EMAIL = { id: 'mock-dev-email', type: 'EMAIL', email: 'mock.multi@example.invalid', usableStatus: { status: 'ENABLED' } };
-const MOCK_USERS = { 'mock.admin': { devices: [SMS] }, 'mock.nomfa': { devices: [] }, 'mock.multi': { devices: [SMS, EMAIL] } };
+const MOCK_USERS = {
+  'mock.admin': { devices: [SMS], role: 'admin' }, 'mock.viewer': { devices: [SMS], role: 'viewer' },
+  'mock.nomfa': { devices: [], role: 'admin' }, 'mock.multi': { devices: [SMS, EMAIL], role: 'admin' },
+};
 // PingOne and PingFederate name the same steps differently (vendor content types, error codes); the mock answers both.
 const FLOW_KINDS = {
   pingone: { password: 'usernamePassword.check', otp: 'otp.check', device: 'device.select', badPassword: 'INVALID_CREDENTIALS', badOtp: 'OTP_VALIDATION_FAILED' },
@@ -74,12 +79,13 @@ const vnd = (name) => `application/vnd.pingidentity.${name}+json`;
 const stripRole = ({ role, ...t }) => t;
 
 export function createMock({ now = Date.now } = {}) {
-  const config = { forgeIdToken: false, sse: false, expiresIn: 3600, issOverride: null, nonceOverride: null, audOverride: null, calls: [], resumeAsJson: false, afterPassword: null, flowSteps: [] };
+  // resources: every RFC 8707 resource indicator the mock AS received ({ at: 'authorize'|'authorization_code'|'refresh_token', resource }).
+  // The mock accepts it and does not act on it.
+  const config = { forgeIdToken: false, sse: false, expiresIn: 3600, issOverride: null, nonceOverride: null, audOverride: null, calls: [], resumeAsJson: false, afterPassword: null, flowSteps: [], resources: [] };
   const tokens = new Map();   // access -> { role, exp, sub, clientId }
   const refreshes = new Map(); // refresh -> { role, sub, clientId }
-  const codes = new Map();     // code -> { clientId, redirectUri, challenge, nonce, role, envId }
+  const codes = new Map();     // code -> { clientId, redirectUri, challenge, nonce, role, sub, envId }
   const flows = new Map();     // flow id -> { kind, clientId, redirectUri, challenge, nonce, envId, status, user, st, devices, code }
-  const clients = new Map();   // id -> { secret, role }  (unregistered ids are accepted offline)
   const freshTenant = () => ({
     users: [{ id: 'u1', username: 'sample.user', enabled: true }, { id: 'u2', username: 'other.user', enabled: true }],
     applications: [{ id: 'a1', name: 'Sample App' }],
@@ -99,7 +105,7 @@ export function createMock({ now = Date.now } = {}) {
   const recordedFixtures = new Map(); // tool -> { source, recordedAt, result }: real responses captured from a Live server
   const recordedTools = new Map(); // tool -> { name, description, inputSchema, annotations, role }: a Live server's tools/list, answered with synthetic replies
 
-  const roleOf = (clientId) => clients.get(clientId)?.role || (/^viewer/i.test(clientId) ? 'viewer' : 'admin');
+  const roleOfUser = (username) => (MOCK_USERS[username]?.role === 'viewer' ? 'viewer' : 'admin');
   const issuer = (env) => config.issOverride || `${base}/${env}/as`;
 
   function issue(clientId, role, sub, withRefresh) {
@@ -201,6 +207,7 @@ export function createMock({ now = Date.now } = {}) {
   const flowView = (flow, extra = {}) => ({ id: flow.id, status: flow.status, ...extra });
   function openFlow(parts, q) {
     if (q.get('response_type') !== 'code' || q.get('response_mode') !== 'pi.flow' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge') || !q.get('nonce') || !q.get('redirect_uri') || !q.get('client_id')) return null;
+    if (q.has('resource')) config.resources.push({ at: 'authorize', resource: q.get('resource') });
     const flow = { id: `mockflow${crypto.randomBytes(8).toString('hex')}`, kind: parts[2] === 'pf' ? 'pf' : 'pingone', clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), challenge: q.get('code_challenge'), nonce: q.get('nonce'), envId: parts[0], status: 'USERNAME_PASSWORD_REQUIRED', st: crypto.randomBytes(12).toString('hex') };
     flows.set(flow.id, flow);
     return flow;
@@ -208,7 +215,8 @@ export function createMock({ now = Date.now } = {}) {
   const deviceBody = (flow, devices) => ({ _embedded: { devices }, devices, ...(devices.length === 1 ? { selectedDevice: { id: devices[0].id } } : {}), id: flow.id });
   function issueCode(flow) {
     const code = crypto.randomBytes(16).toString('hex');
-    codes.set(code, { clientId: flow.clientId, redirectUri: flow.redirectUri, challenge: flow.challenge, nonce: flow.nonce, role: roleOf(flow.clientId), envId: flow.envId });
+    const role = roleOfUser(flow.user);
+    codes.set(code, { clientId: flow.clientId, redirectUri: flow.redirectUri, challenge: flow.challenge, nonce: flow.nonce, role, sub: `mock-${role}-user`, envId: flow.envId });
     return code;
   }
   async function flowStep(req, res, flow) {
@@ -273,16 +281,10 @@ export function createMock({ now = Date.now } = {}) {
     }
     if (parts[1] === 'as' && parts[2] === 'jwks') return send(res, 200, { keys: [jwk] });
     if (parts[1] === 'as' && parts[2] === 'token' && req.method === 'POST') {
+      // Only the two grants a user sign-in needs. client_credentials is refused: the hosted MCP takes a user, not a worker.
       const f = new URLSearchParams(await readBody(req));
-      let id = f.get('client_id'); let secret = f.get('client_secret');
-      const basic = /^Basic (.+)$/.exec(req.headers.authorization || '');
-      if (basic) { const [i, ...s] = Buffer.from(basic[1], 'base64').toString().split(':'); id = i; secret = s.join(':'); }
       const g = f.get('grant_type');
-      if (g === 'client_credentials') {
-        const c = clients.get(id);
-        if (!id || !secret || (c && c.secret !== secret)) return send(res, 401, { error: 'invalid_client', error_description: 'bad client credentials' });
-        return send(res, 200, issue(id, roleOf(id), `worker:${id}`, false));
-      }
+      if (f.has('resource')) config.resources.push({ at: g, resource: f.get('resource') });
       if (g === 'refresh_token') {
         const r = refreshes.get(f.get('refresh_token'));
         if (!r) return send(res, 400, { error: 'invalid_grant' });
@@ -292,8 +294,8 @@ export function createMock({ now = Date.now } = {}) {
       if (g === 'authorization_code') {
         const c = codes.get(f.get('code')); codes.delete(f.get('code'));
         if (!c || c.redirectUri !== f.get('redirect_uri') || c.clientId !== f.get('client_id') || pkceChallenge(f.get('code_verifier') || '') !== c.challenge) return send(res, 400, { error: 'invalid_grant' });
-        const out = issue(c.clientId, c.role, 'mock-admin-user', true);
-        out.id_token = idToken(c.envId, c.clientId, 'mock-admin-user', c.nonce);
+        const out = issue(c.clientId, c.role, c.sub, true);
+        out.id_token = idToken(c.envId, c.clientId, c.sub, c.nonce);
         return send(res, 200, out);
       }
       return send(res, 400, { error: 'unsupported_grant_type' });
@@ -309,7 +311,7 @@ export function createMock({ now = Date.now } = {}) {
   }
 
   return {
-    config, tenant, clients, tokens, refreshes,
+    config, tenant, tokens, refreshes,
     get base() { return base; },
     handle,
     // Real responses recorded from a Live server; served by tools/call before the in-process sample.
@@ -320,7 +322,7 @@ export function createMock({ now = Date.now } = {}) {
     setRecordedTools: (list) => { recordedTools.clear(); for (const t of list || []) if (!CATALOG.some((c) => c.name === t.name)) recordedTools.set(t.name, t); },
     revoke: (access) => tokens.delete(access),
     // Reset: the fake tenant goes back to its starting records and every token, code and recorded call is dropped.
-    reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); flows.clear(); config.calls.length = 0; config.flowSteps.length = 0; },
+    reset() { Object.assign(tenant, freshTenant()); tokens.clear(); refreshes.clear(); codes.clear(); flows.clear(); config.calls.length = 0; config.flowSteps.length = 0; config.resources.length = 0; },
     async start() {
       server = http.createServer((q, r) => { handle(q, r).catch(() => send(r, 500, { error: 'mock_error' })); });
       await new Promise((r) => server.listen(0, '127.0.0.1', r));

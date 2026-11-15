@@ -4,7 +4,8 @@ import http from 'node:http';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { assertBindAllowed } from '../src/security.js';
-import { ENV_ID, startApp, tmpDir, workerConn } from './helpers.js';
+import { MOCK_LOGIN } from '../src/mock.js';
+import { addSignedIn, ENV_ID, mockConn, signIn, startApp } from './helpers.js';
 import { installNetguard } from './netguard.js';
 
 const guard = installNetguard();
@@ -12,7 +13,8 @@ let s;
 before(async () => { s = await startApp(); });
 after(async () => { await s.close(); assert.deepEqual(guard.attempts, [], 'zero outbound attempts'); guard.restore(); });
 
-const add = async (o) => { const r = await s.call('POST', '/api/connections', workerConn(o)); assert.equal(r.status, 201, r.text); return r.json; };
+const add = (o) => addSignedIn(s, o); // an offline PingOne connection, signed in through the mock pi.flow (mock.admin unless o.user says)
+const create = async (o) => { const r = await s.call('POST', '/api/connections', mockConn(o)); assert.equal(r.status, 201, r.text); return r.json; };
 const writes = (id, on = true) => s.call('POST', `/api/connections/${id}/settings`, { allowWrites: on });
 
 test('health is demo-health/1 exactly, public, no-store', async () => {
@@ -24,26 +26,42 @@ test('health is demo-health/1 exactly, public, no-store', async () => {
   assert.equal((await s.call('POST', '/api/health', {})).status, 405);
 });
 test('connections: region is an allowlist (opt-in for others) and a non-loopback redirectUri is refused at create (none at all is fine)', async () => {
-  assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'com.xyz' }))).status, 400);
-  assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'com.xyz', regionOther: true }))).status, 201);
-  assert.equal((await s.call('POST', '/api/connections', workerConn({ region: 'eu' }))).status, 201);
-  const inter = (redirectUri) => ({ ...workerConn(), auth: 'interactive', redirectUri });
+  assert.equal((await s.call('POST', '/api/connections', mockConn({ region: 'com.xyz' }))).status, 400);
+  assert.equal((await s.call('POST', '/api/connections', mockConn({ region: 'com.xyz', regionOther: true }))).status, 201);
+  assert.equal((await s.call('POST', '/api/connections', mockConn({ region: 'eu' }))).status, 201);
+  const inter = (redirectUri) => mockConn({ redirectUri });
   assert.equal((await s.call('POST', '/api/connections', inter('http://evil.com/api/oauth/callback'))).status, 400);
   assert.equal((await s.call('POST', '/api/connections', inter('http://localhost:7815/api/oauth/callback'))).status, 201);
   assert.equal((await s.call('POST', '/api/connections', inter(undefined))).status, 201);
 });
 test('connections: validation, secrets write-only, file mode 600 in a 700 dir', async () => {
-  assert.equal((await s.call('POST', '/api/connections', { kind: 'pingone', envId: 'nope', clientId: 'x', clientSecret: 'y' })).status, 400);
-  assert.equal((await s.call('POST', '/api/connections', workerConn({ clientSecret: '' }))).status, 400);
+  assert.equal((await s.call('POST', '/api/connections', { kind: 'pingone', envId: 'nope', clientId: 'x' })).status, 400);
+  assert.equal((await s.call('POST', '/api/connections', mockConn({ clientId: '' }))).status, 400);
   assert.equal((await s.call('POST', '/api/connections', { kind: 'custom', url: 'http://u:p@127.0.0.1/mcp' })).status, 400);
-  const c = await add({ clientSecret: 'SENTINEL-WORKER-SECRET-1' });
-  assert.equal(c.clientSecret, 'set'); assert.equal(c.allowWrites, false);
-  const list = await s.call('GET', '/api/connections');
-  assert.ok(!list.text.includes('SENTINEL-WORKER-SECRET-1'));
+  const c = await create();
+  assert.equal(c.auth, 'interactive'); assert.equal(c.allowWrites, false); assert.equal('clientSecret' in c, false, 'a PingOne connection holds no secret');
   assert.equal(fs.statSync(path.join(s.dir, 'connections.json')).mode & 0o777, 0o600);
   assert.equal(fs.statSync(s.dir).mode & 0o777, 0o700);
   const cu = await s.call('POST', '/api/connections', { kind: 'custom', url: `${s.mock.base}/mcp/${ENV_ID}?k=SENTINEL-QUERY`, authHeader: 'Authorization', token: 'SENTINEL-CUSTOM-TOKEN' });
   assert.equal(cu.json.token, 'set'); assert.ok(!cu.text.includes('SENTINEL-CUSTOM-TOKEN') && !cu.text.includes('SENTINEL-QUERY'));
+});
+test('a PingOne connection with a worker (client_credentials) or a client secret is refused at create, says why, echoes nothing and stores nothing', async () => {
+  const SEC = 'SENTINEL-REFUSED-WORKER-SECRET-3';
+  const before = s.app.locals.store.list().length;
+  for (const body of [mockConn({ auth: 'worker' }), mockConn({ clientSecret: SEC }), mockConn({ auth: 'worker', clientSecret: SEC, tokenAuthMethod: 'post' }), mockConn({ offline: false, auth: 'worker', clientSecret: SEC })]) {
+    const r = await s.call('POST', '/api/connections', body);
+    assert.equal(r.status, 400, r.text); assert.equal(r.json.error, 'bad_request');
+    assert.match(r.json.message, /takes a user sign-in/); assert.match(r.json.message, /not a worker/);
+    assert.ok(!r.text.includes(SEC));
+  }
+  assert.equal(s.app.locals.store.list().length, before, 'nothing was saved');
+  assert.ok(!fs.readFileSync(path.join(s.dir, 'connections.json'), 'utf8').includes(SEC));
+});
+test('a new PingOne connection is interactive and defaults to the documented mcp-host endpoint; api stays selectable', async () => {
+  const d = await create({ auth: undefined });
+  assert.equal(d.auth, 'interactive'); assert.equal(d.endpointStyle, 'mcp-host');
+  assert.equal((await create({ endpointStyle: 'api' })).endpointStyle, 'api');
+  assert.equal((await create({ endpointStyle: 'nonsense' })).endpointStyle, 'mcp-host');
 });
 test('test connection: returns the tools it counted (name and class, sorted) and the totals match them', async () => {
   const admin = await add({ clientId: 'admin-app' });
@@ -55,11 +73,12 @@ test('test connection: returns the tools it counted (name and class, sorted) and
   assert.deepEqual(Object.keys(r.tools[0]).sort(), ['class', 'classSource', 'name'], 'only what the dialog shows');
   assert.equal(r.tools.find((t) => t.name === 'deleteUser').class, 'destructive');
 });
-test('tools list: classification and area grouping; viewer vs admin roles; SSE mode', async () => {
-  const admin = await add({ clientId: 'admin-app' }); const viewer = await add({ clientId: 'viewer-app' });
+test('tools list: classification and area grouping; the role comes from the signed-in mock account (viewer: the 18 read tools; admin: all 33); SSE mode', async () => {
+  const admin = await add(); const viewer = await add({ user: MOCK_LOGIN.viewer });
   const a = (await s.call('GET', `/api/connections/${admin.id}/tools`)).json;
   const v = (await s.call('GET', `/api/connections/${viewer.id}/tools`)).json;
-  assert.ok(v.count < a.count); assert.equal(v.byClass.write + v.byClass.destructive, 0);
+  assert.equal(v.count, 18); assert.equal(v.byClass.read, 18); assert.equal(v.byClass.write + v.byClass.destructive, 0);
+  assert.equal(a.count, 33); assert.equal(a.byClass.read, v.count, 'the viewer sees exactly the read tools the admin sees');
   assert.ok(a.byClass.destructive >= 3 && a.byClass.write > 5);
   assert.ok(a.areas.user.includes('deleteUser') && a.areas.application.includes('listApplications'));
   assert.equal(a.tools.find((t) => t.name === 'syncTenantWidgets').class, 'write');
@@ -68,14 +87,14 @@ test('tools list: classification and area grouping; viewer vs admin roles; SSE m
   s.mock.config.sse = false;
 });
 test('health card: count, fixture label, short-list hint only for a short list', async () => {
-  const admin = await add({ clientId: 'admin-app' }); const viewer = await add({ clientId: 'viewer-app' });
+  const admin = await add(); const viewer = await add({ user: MOCK_LOGIN.viewer });
   const ra = (await s.call('POST', `/api/connections/${admin.id}/test`)).json; const rv = (await s.call('POST', `/api/connections/${viewer.id}/test`)).json;
   assert.equal(ra.ok, true); assert.equal(ra.fixture, 'illustrative sample, not a recording');
-  assert.match(rv.hint, /missing admin roles/); assert.match(rv.hint, /not verified/); assert.match(rv.expectedNote, /UNVERIFIED/);
-  s.mock.clients.set('strict', { secret: 'right', role: 'admin' });
-  const bad = await add({ clientId: 'strict', clientSecret: 'SENTINEL-BAD-SECRET' });
-  const rb = (await s.call('POST', `/api/connections/${bad.id}/test`)).json;
-  assert.equal(rb.ok, false); assert.ok(!JSON.stringify(rb).includes('SENTINEL-BAD-SECRET'));
+  assert.match(rv.hint, /missing admin roles/); assert.match(rv.hint, /not verified/); assert.match(rv.expectedNote, /UNVERIFIED/); assert.match(rv.expectedNote, /signed-in user/);
+  assert.doesNotMatch(JSON.stringify([ra, rv]), /worker/i, 'no note talks about a worker');
+  const unsigned = await create();
+  const rb = await s.call('POST', `/api/connections/${unsigned.id}/test`);
+  assert.equal(rb.status, 401); assert.equal(rb.json.error, 'login_required');
 });
 test('writes are blocked by default and audited; reads run', async () => {
   const c = await add();
@@ -115,7 +134,7 @@ test('confirm gate: needs confirm, exact argsHash, typed name for destructive', 
   assert.equal(d2.status, 200); assert.equal(s.mock.tenant.users.some((u) => u.id === 'u2'), false);
 });
 test('a tool the identity cannot see is refused; wrong-case params warn', async () => {
-  const v = await add({ clientId: 'viewer-app' }); await writes(v.id);
+  const v = await add({ user: MOCK_LOGIN.viewer }); await writes(v.id);
   assert.equal((await s.call('POST', `/api/connections/${v.id}/call`, { tool: 'deleteUser', arguments: {} })).json.error, 'tool_not_listed');
   const r = await s.call('POST', `/api/connections/${v.id}/call`, { tool: 'listUsers', arguments: { environment_id: ENV_ID } });
   assert.ok(r.json.warnings.some((w) => w.kind === 'snake_case' && /environmentId/.test(w.message)));
@@ -135,17 +154,19 @@ test('401 from the server mid-session: the token is renewed and the call retried
   assert.equal((await s.call('POST', url, { tool: 'listUsers', arguments: {} })).status, 200);
 });
 test('interactive login over HTTP (pi.flow): start is same-origin only, the steps run once each, bad input is refused, logout clears', async () => {
-  const c = await add({ auth: 'interactive', clientSecret: undefined });
+  const c = await create();
   assert.ok(!c.redirectUri, 'no redirect URI is needed');
   const bad = await s.call('POST', `/api/connections/${c.id}/login/start`, {}, { origin: 'http://evil.example' });
   assert.equal(bad.status, 403);
   assert.equal((await s.call('GET', `/api/connections/${c.id}/tools`)).json.error, 'login_required');
-  assert.equal((await s.call('POST', `/api/connections/${(await add()).id}/login/start`, {})).json.error, 'not_interactive');
+  const custom = (await s.call('POST', '/api/connections', { kind: 'custom', url: `${s.mock.base}/mcp/${ENV_ID}` })).json;
+  assert.equal((await s.call('POST', `/api/connections/${custom.id}/login/start`, {})).json.error, 'not_interactive');
   const start = await s.call('POST', `/api/connections/${c.id}/login/start`, {});
   assert.equal(start.status, 200, start.text);
   assert.equal(start.json.step, 'password'); assert.ok(start.json.loginId);
   assert.equal(start.json.authorizeUrl, undefined, 'no redirect URL is handed to the browser');
-  assert.deepEqual(Object.keys(start.json.mockLogin).sort(), ['otp', 'password', 'username'], 'the mock connection says which mock account to use');
+  assert.deepEqual(Object.keys(start.json.mockLogin).sort(), ['otp', 'password', 'username', 'viewer'], 'the mock connection says which mock accounts to use');
+  assert.equal(start.json.mockLogin.viewer, 'mock.viewer');
   const step = (b, id = c.id) => s.call('POST', `/api/connections/${id}/login/step`, { loginId: start.json.loginId, ...b });
   for (const malformed of [{}, { action: 'nope' }, { action: 'password', username: 'u' }, { action: 'password', username: 'u', password: 'x'.repeat(2000) }, { action: 'otp', otp: '12' }, { action: 'otp', otp: 123456 }, { action: 'device', deviceId: '../x' }]) {
     const r = await step(malformed); assert.equal(r.status, 400, JSON.stringify(malformed)); assert.equal(r.json.error, 'bad_request');
@@ -164,80 +185,102 @@ test('interactive login over HTTP (pi.flow): start is same-origin only, the step
   assert.equal((await s.call('GET', `/api/connections/${c.id}/tools`)).json.error, 'login_required');
 });
 test('secrets never appear in responses, console output, the audit log or errors (sentinels)', async () => {
-  const SEC = 'SENTINEL-ZZ-WORKER-SECRET-9'; const TOK = 'SENTINEL-ZZ-CUSTOM-TOKEN-9';
+  const SEC = 'SENTINEL-ZZ-REFUSED-SECRET-9'; const TOK = 'SENTINEL-ZZ-CUSTOM-TOKEN-9';
   const seen = []; const origWrite = process.stdout.write; const errWrite = process.stderr.write;
   process.stdout.write = (c, ...r) => { seen.push(String(c)); return origWrite.call(process.stdout, c, ...r); };
   process.stderr.write = (c, ...r) => { seen.push(String(c)); return errWrite.call(process.stderr, c, ...r); };
   const out = [];
   try {
-    const c = await add({ clientSecret: SEC }); await writes(c.id);
+    out.push((await s.call('POST', '/api/connections', mockConn({ clientSecret: SEC }))).text); // refused, without the secret
+    const c = await add(); await writes(c.id);
+    const AT = [...s.mock.tokens.keys()].at(-1); // the access token just issued to c: the tool result below echoes it back
     const cu = (await s.call('POST', '/api/connections', { kind: 'custom', url: `${s.mock.base}/mcp/${ENV_ID}`, token: TOK })).json; // 401 upstream: an error path
     out.push(JSON.stringify(c), JSON.stringify(cu));
     for (const r of [
       await s.call('GET', '/api/connections'), await s.call('GET', `/api/connections/${c.id}/tools`), await s.call('POST', `/api/connections/${c.id}/test`),
       await s.call('GET', `/api/connections/${cu.id}/tools`), await s.call('POST', `/api/connections/${cu.id}/test`),
-      await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC } }),
+      await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: AT } }),
       await s.call('POST', `/api/connections/nope/call`, {}), await s.call('POST', `/api/connections/${c.id}/call`, { tool: 123 }),
     ]) out.push(r.text);
-    const h = (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC, clientSecret: 'x' } })).json;
-    const done = await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC }, confirm: true, argsHash: (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: SEC } })).json.argsHash });
+    const h = (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: AT, clientSecret: 'x' } })).json;
+    const done = await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: AT }, confirm: true, argsHash: (await s.call('POST', `/api/connections/${c.id}/call`, { tool: 'createUser', arguments: { environmentId: ENV_ID, username: AT } })).json.argsHash });
     assert.equal(done.status, 200); out.push(done.text, JSON.stringify(h));
     out.push((await s.call('GET', '/api/audit')).text, fs.readFileSync(path.join(s.dir, 'audit.jsonl'), 'utf8'), fs.readFileSync(path.join(s.dir, 'connections.json'), 'utf8').replaceAll(SEC, '').replaceAll(TOK, ''));
   } finally { process.stdout.write = origWrite; process.stderr.write = errWrite; }
   const all = [...out, ...seen].join('\n');
   for (const needle of [SEC, TOK, ...s.mock.tokens.keys(), ...s.mock.refreshes.keys()]) assert.ok(!all.includes(needle), `leaked ${needle.slice(0, 18)}`);
-  assert.ok(all.includes('[redacted]'), 'the echoed secret in the tool result was replaced');
+  assert.ok(all.includes('[redacted]'), 'the echoed token in the tool result was replaced');
   assert.equal(fs.statSync(path.join(s.dir, 'audit.jsonl')).mode & 0o777, 0o600);
 });
 test('guards: bad Host refused, cross-origin and missing-origin writes refused, non-loopback bind refused', async () => {
   const badStatus = await new Promise((resolve, reject) => { const q = http.request(`${s.origin}/api/connections`, { headers: { Host: 'evil.example' } }, (r) => { r.resume(); resolve(r.statusCode); }); q.on('error', reject); q.end(); });
   assert.equal(badStatus, 403);
-  assert.equal((await s.call('POST', '/api/connections', workerConn(), { origin: 'http://evil.example' })).status, 403);
-  assert.equal((await s.call('POST', '/api/connections', workerConn(), { origin: null })).status, 403);
+  assert.equal((await s.call('POST', '/api/connections', mockConn(), { origin: 'http://evil.example' })).status, 403);
+  assert.equal((await s.call('POST', '/api/connections', mockConn(), { origin: null })).status, 403);
   assert.throws(() => assertBindAllowed('0.0.0.0', {}), /refusing to bind/);
   assert.equal(assertBindAllowed('0.0.0.0', { MFAADM_BIND: '0.0.0.0' }), '0.0.0.0');
 });
 
-test('mock role switch changes the tool list and the auth status carries an expiry but no token', async () => {
-  const c = await add({ clientId: 'viewer-demo' });
+test('the role is the signed-in account: signing out and in again as another mock account changes the list; the status carries an expiry but no token; the role route is gone', async () => {
+  const c = await add({ user: MOCK_LOGIN.viewer });
   const n = async () => (await s.call('GET', `/api/connections/${c.id}/tools`)).json.count;
-  const viewer = await n();
-  const r = await s.call('POST', `/api/connections/${c.id}/role`, { role: 'admin' });
-  assert.equal(r.status, 200); assert.equal(r.json.clientId, 'admin-demo');
-  assert.ok(await n() > viewer);
+  assert.equal(await n(), 18);
   const v = (await s.call('GET', '/api/connections')).json.connections.find((x) => x.id === c.id);
-  assert.equal(v.auth_status.token, 'set'); assert.ok(v.auth_status.expiresAt > Date.now());
-  assert.ok(!/mock-at-/.test(JSON.stringify(v)));
-  assert.equal((await s.call('POST', `/api/connections/${c.id}/role`, { role: 'root' })).status, 400);
+  assert.equal(v.auth_status.signedIn, true); assert.equal(v.auth_status.as, 'mock-viewer-user'); assert.ok(v.auth_status.expiresAt > Date.now());
+  assert.ok(!/mock-(at|rt)-/.test(JSON.stringify(v)));
+  await s.call('POST', `/api/connections/${c.id}/logout`, {});
+  await signIn(s, c.id, MOCK_LOGIN.username);
+  assert.equal(await n(), 33);
+  assert.equal((await s.call('POST', `/api/connections/${c.id}/role`, { role: 'admin' })).status, 404, 'there is no role switch: the role is whoever signed in');
+});
+
+test('a worker connection saved by an older build does not crash the app: it is listed without its secret and every call is refused with a clear message', async () => {
+  const file = path.join(s.dir, 'connections.json');
+  const all = JSON.parse(fs.readFileSync(file, 'utf8'));
+  all['legacy-worker-1'] = { id: 'legacy-worker-1', kind: 'pingone', label: 'old worker', createdAt: '2026-11-01T00:00:00.000Z', allowWrites: false, offline: true, region: 'com', envId: ENV_ID, auth: 'worker', endpointStyle: 'api', idp: 'pingone', clientId: 'old-worker', clientSecret: 'SENTINEL-LEGACY-SECRET-5', tokenAuthMethod: 'basic' };
+  fs.writeFileSync(file, JSON.stringify(all), { mode: 0o600 });
+  const list = await s.call('GET', '/api/connections');
+  assert.equal(list.status, 200);
+  const v = list.json.connections.find((x) => x.id === 'legacy-worker-1');
+  assert.equal(v.legacyWorker, true); assert.deepEqual(v.auth_status, { signedIn: false }); assert.equal('clientSecret' in v, false);
+  const texts = [list.text];
+  for (const [m, p, b] of [['GET', 'tools'], ['POST', 'test'], ['POST', 'scan'], ['POST', 'call', { tool: 'listUsers', arguments: {} }], ['POST', 'rpc', { method: 'tools/list' }], ['POST', 'login/start']]) {
+    const r = await s.call(m, `/api/connections/legacy-worker-1/${p}`, m === 'GET' ? undefined : (b ?? {}));
+    assert.equal(r.status, 409, `${p}: ${r.text}`); assert.equal(r.json.error, 'worker_unsupported', p); assert.match(r.json.message, /user sign-in/, p);
+    texts.push(r.text);
+  }
+  assert.ok(!texts.join('\n').includes('SENTINEL-LEGACY-SECRET-5'), 'the old secret is never returned');
+  assert.equal((await s.call('POST', '/api/connections/legacy-worker-1/settings', { allowWrites: false })).status, 200, 'local routes still work');
+  assert.equal((await s.call('DELETE', '/api/connections/legacy-worker-1')).status, 200, 'and it can be deleted');
+});
+
+test('the sign-in names the MCP server as the resource (RFC 8707) on the authorize and the code redemption', async () => {
+  s.mock.config.resources.length = 0;
+  await add();
+  assert.deepEqual(s.mock.config.resources, [{ at: 'authorize', resource: `${s.mock.base}/mcp/${ENV_ID}` }, { at: 'authorization_code', resource: `${s.mock.base}/mcp/${ENV_ID}` }]);
 });
 
 test('GET /api/health turns needs-setup into ready as soon as a connection exists (no 60 s wait)', async () => {
   const h = await startApp();
   try {
     assert.equal((await h.call('GET', '/api/health')).json.state, 'needs-setup');
-    const c = (await h.call('POST', '/api/connections', workerConn())).json;
+    const c = (await h.call('POST', '/api/connections', mockConn())).json;
     assert.equal((await h.call('GET', '/api/health')).json.state, 'ready');
     await h.call('DELETE', `/api/connections/${c.id}`);
     assert.equal((await h.call('GET', '/api/health')).json.state, 'needs-setup');
   } finally { await h.close(); }
 });
 
-test('presets: banking/opensearch create custom connections; pingone preset needs a local file and never echoes the secret', async () => {
-  const dir = tmpDir(); const file = path.join(dir, 'worker.env');
-  const t = await startApp({ env: { MFAADM_WORKER_ENV_FILE: file, MFAADM_BANKING_URL: 'http://127.0.0.1:1/mcp' } });
+test('presets: banking/opensearch create custom connections; there is no PingOne preset (a PingOne connection is a user sign-in)', async () => {
+  const t = await startApp({ env: { MFAADM_BANKING_URL: 'http://127.0.0.1:1/mcp' } });
   try {
     const b = await t.call('POST', '/api/presets/banking');
     assert.equal(b.status, 201); assert.equal(b.json.kind, 'custom'); assert.match(b.json.url, /127\.0\.0\.1:1\/mcp/);
     assert.equal((await t.call('POST', '/api/presets/opensearch')).json.url, 'http://localhost:9900/mcp');
     assert.equal((await t.call('POST', '/api/presets/nope')).status, 404);
     for (const id of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) { const r = await t.call('POST', `/api/presets/${id}`); assert.equal(r.status, 404, id); assert.equal(r.json.error, 'unknown_preset', id); }
-    const missing = await t.call('POST', '/api/presets/pingone');
-    assert.equal(missing.status, 409); assert.match(missing.json.message, /worker\.env/);
-    fs.writeFileSync(file, `PINGONE_ENV_ID=${ENV_ID}\nPINGONE_CLIENT_ID=cid\nPINGONE_CLIENT_SECRET=SENTINEL-SECRET-123\n`);
-    const ok = await t.call('POST', '/api/presets/pingone');
-    assert.equal(ok.status, 201); assert.equal(ok.json.envId, ENV_ID);
-    assert.ok(!ok.text.includes('SENTINEL-SECRET-123'), 'secret never returned');
-    assert.ok(!(await t.call('GET', '/api/connections')).text.includes('SENTINEL-SECRET-123'));
+    const gone = await t.call('POST', '/api/presets/pingone');
+    assert.equal(gone.status, 404); assert.equal(gone.json.error, 'unknown_preset');
   } finally { await t.close(); }
 });
 test('preset defaults: neutral labels, and no port the rulebook reserves for other tools', async () => {

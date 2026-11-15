@@ -74,7 +74,7 @@ export default function Diagram({ theme = "system" }) {
       if (!live) return;
       if (!r.ok || !Array.isArray(r.json?.nodes)) { setError("the diagram did not load"); return; }
       setError(null); setDoc(r.json);
-      // Both diagrams share one layout: boxes the visitor has moved stay where they are when the sign-in model changes.
+      // Diagrams that share a layout keep the boxes the visitor has moved where they are when the model changes (the list holds one today).
       setMoved((prev) => starts(r.json).map((n) => prev.find((p) => p.id === n.id) || n));
     });
     return () => { live = false; };
