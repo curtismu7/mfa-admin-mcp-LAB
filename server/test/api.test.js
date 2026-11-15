@@ -7,6 +7,7 @@ import { assertBindAllowed } from '../src/security.js';
 import { MOCK_LOGIN } from '../src/mock.js';
 import { addSignedIn, ENV_ID, mockConn, signIn, startApp } from './helpers.js';
 import { installNetguard } from './netguard.js';
+import { isAllowed } from '../src/netguard.js';
 
 const guard = installNetguard();
 let s;
@@ -311,6 +312,20 @@ test('preset status: in Live each preset says whether its server answers and how
     assert.deepEqual([o.folder, o.command], ['AI-DEMO2', 'docker compose --profile mcpgw up -d opensearch-mcp-server']);
     assert.equal(b.token, undefined, 'the status carries no token');
   } finally { await t.close(); up.close(); }
+});
+test('preset status in the container: the probe dials host.docker.internal and holds a netguard permit for it while it runs', async () => {
+  const seen = [];
+  const fetchImpl = async (url) => { seen.push({ host: new URL(url).hostname, allowed: isAllowed('host.docker.internal') }); return new Response(null, { status: 405 }); };
+  const was = process.env.MFAADM_CONTAINER;
+  process.env.MFAADM_CONTAINER = '1';
+  const t = await startApp({ fetchImpl });
+  try {
+    assert.equal((await t.call('POST', '/api/mode', { source: 'real' })).status, 200);
+    const presets = (await t.call('GET', '/api/presets')).json.presets;
+    assert.deepEqual(presets.map((p) => p.running), [true, true]);
+    assert.deepEqual(seen, [{ host: 'host.docker.internal', allowed: true }, { host: 'host.docker.internal', allowed: true }]);
+    assert.equal(isAllowed('host.docker.internal'), false, 'the permit is released after the probe');
+  } finally { await t.close(); if (was === undefined) delete process.env.MFAADM_CONTAINER; else process.env.MFAADM_CONTAINER = was; }
 });
 test('preset defaults: neutral labels, and no port the rulebook reserves for other tools', async () => {
   const t = await startApp({ env: {} });
