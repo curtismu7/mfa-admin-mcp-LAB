@@ -49,6 +49,17 @@ describe("ConfirmDialog", () => {
     expect(within(dlg).getByRole("button", { name: "Cancel" })).toHaveFocus();
   });
 
+  it("shows the exact arguments through JsonPane: the Form view names each field, the target keys stand out, and nothing is capped", () => {
+    setJsonView("form");
+    render(<ConfirmDialog tool="deleteFidoPolicy" gate={{ arguments: { environmentId: "e1", userId: "u9", note: "<i>x</i>" }, argsHash: "h", requiresTypedName: true }} onConfirm={() => {}} onCancel={() => {}} />);
+    const pane = screen.getByTestId("confirm-args");
+    expect(pane).toHaveTextContent("userId");
+    expect(pane).toHaveTextContent("u9");
+    expect(pane.querySelectorAll('[data-hot="true"]')).toHaveLength(2); // environmentId and userId
+    expect(pane.querySelector("i")).toBeNull();
+    expect(pane).toHaveTextContent("<i>x</i>");
+  });
+
   it("Escape cancels once and confirms nothing; Confirm returns the typed name", async () => {
     const onCancel = vi.fn(); const onConfirm = vi.fn();
     render(<ConfirmDialog tool="deleteUser" gate={{ ...gate, requiresTypedName: true }} onConfirm={onConfirm} onCancel={onCancel} />);

@@ -41,7 +41,7 @@ export default function CallView({ response, record, sample }) {
       {fixture && (
         <div data-testid="sample-jsonrpc">
           <h4>Sample JSON-RPC response (recorded from a real server, {new Date(fixture.recordedAt).toLocaleDateString()})</h4>
-          <Json value={redactForDisplay(fixture.result)} label="Sample response" testId="sample-response" hot={["isError"]} />
+          <Json value={redactForDisplay(fixture.result)} label="Sample response" testId="sample-response" hot={["isError", "code", "message"]} />
         </div>
       )}
       {record?.can && response.ok && (
