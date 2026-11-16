@@ -123,6 +123,8 @@ function PresetRow({ p, conns, activeId, onConnect, onSelect, say }) {
   );
 }
 
+// Seen live 2026-11-16: the hosted PingOne MCP server answered 401 to a PingFederate-issued token (explicit deny at its gateway).
+const PF_MCP_NOTE = "PingOne's hosted MCP server accepts only a PingOne sign-in. PF login signs you in, but the server refuses its tool calls (HTTP 401). Use P1 login for tools.";
 const PF_NEEDS = "PF login needs a PingFederate base URL: add it under PingFederate on this card and press Save PingFederate.";
 
 function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
@@ -165,6 +167,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
             </span>)}
         <button type="button" onClick={() => { if (window.confirm(`Delete the connection "${c.label}"?`)) act(() => api.del(`/api/connections/${c.id}`), "Connection deleted."); }}>Delete</button>
       </div>
+      {c.kind === "pingone" && c.auth === "interactive" && !c.offline && c.idpBaseUrl && <p className="hint" data-testid="pf-mcp-note">{PF_MCP_NOTE}</p>}
       {c.legacyWorker && <p className="notice" data-state="bad" data-testid="legacy-worker">Saved by an older build for a worker (client_credentials) token, which the hosted PingOne MCP server does not take: it needs a user sign-in. Delete this connection and add a PingOne one (Setup creates the sign-in application).</p>}
       {c.kind === "pingone" && c.auth === "interactive" && !st.signedIn && (
         <form className="row wrap" onSubmit={saveHint} aria-label="Sign-in username hint">
@@ -183,7 +186,7 @@ function ConnCard({ c, active, onSelect, onChange, onTest, say }) {
             <input value={pf.client} onChange={(e) => setPf({ ...pf, client: e.target.value })} maxLength={120} placeholder={c.clientId} spellCheck="false" autoComplete="off" data-testid="card-pf-client" />
           </label>
           <button type="submit" data-testid="card-pf-save" disabled={!pfChanged}>Save PingFederate</button>
-          <small className="hint">The OAuth client on that PingFederate must be public (no secret), allow authorization code + PKCE and redirectless (pi.flow) sign-in. Empty client id: this connection's client id is used. UNVERIFIED: whether the MCP server accepts a PingFederate token.</small>
+          <small className="hint">The OAuth client on that PingFederate must be public (no secret), allow authorization code + PKCE and redirectless (pi.flow) sign-in. Empty client id: this connection's client id is used.</small>
         </form>
       )}
       {loginErr && <p className="err-text" role="alert" data-testid="login-err">{loginErr}</p>}

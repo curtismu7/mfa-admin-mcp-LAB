@@ -553,6 +553,7 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
   render(<App />);
   expect(await screen.findByTestId("pf-login")).toBeEnabled(); // the mock simulates PingFederate
   expect(screen.queryByTestId("pf-hint")).toBeNull();
+  expect(screen.queryByTestId("pf-mcp-note")).toBeNull(); // the mock simulates both, so its PF token works there
   await pressLive(user);
   await waitFor(() => expect(screen.getAllByTestId("conn-card")).toHaveLength(2));
   const [plain, pf] = screen.getAllByTestId("conn-card");
@@ -560,6 +561,8 @@ test("PF login is only offered where a PingFederate exists: the mock simulates o
   expect(within(plain).getByTestId("pf-hint")).toHaveTextContent(/PingFederate base URL/);
   expect(within(pf).getByTestId("pf-login")).toBeEnabled();
   expect(within(pf).queryByTestId("pf-hint")).toBeNull();
+  expect(within(plain).queryByTestId("pf-mcp-note")).toBeNull();
+  expect(within(pf).getByTestId("pf-mcp-note")).toHaveTextContent(/accepts only a PingOne sign-in.*Use P1 login for tools/);
 });
 
 test("a saved live PingOne connection gets a PingFederate base URL on its card, and then PF login is offered", async () => {
@@ -582,6 +585,7 @@ test("a saved live PingOne connection gets a PingFederate base URL on its card, 
   await waitFor(() => expect(within(screen.getByTestId("conn-card")).getByTestId("pf-login")).toBeEnabled());
   expect(screen.getByTestId("conn-card")).toHaveTextContent(/PingFederate https:\/\/pingfederate\.example\.com, PF client pf-client/);
   expect(screen.queryByTestId("pf-hint")).toBeNull();
+  expect(screen.getByTestId("pf-mcp-note")).toHaveTextContent(/refuses its tool calls/);
 });
 
 test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
