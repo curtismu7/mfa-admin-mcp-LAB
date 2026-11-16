@@ -17,14 +17,8 @@ const ENV_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const validRegion = (r, other = false) => VERIFIED_REGIONS.includes(String(r)) || (other === true && REGION_RE.test(String(r)));
 export const validEnvId = (e) => ENV_RE.test(String(e));
 
-export function asBase({ region, envId, offlineBase, idp, idpBaseUrl }) {
+export function asBase({ region, envId, offlineBase }) {
   if (offlineBase) return `${offlineBase}/${envId}/as`;
-  // PingFederate: standard PF endpoint paths, base URL supplied per connection (no region/envId splicing).
-  if (idp === 'pf') {
-    // No default host: a guessed name would send the browser (client id, state, PKCE challenge) to a site that is not the operator's.
-    if (!idpBaseUrl) throw Object.assign(new Error('PingFederate sign-in needs a PingFederate base URL on the connection'), { code: 'pf_not_configured' });
-    return `${String(idpBaseUrl).replace(/\/+$/, '')}/as`;
-  }
   return `https://auth.pingone.${region}/${envId}/as`;
 }
 export function mcpUrl({ region, envId, endpointStyle, offlineBase }) {
@@ -48,9 +42,7 @@ export function liveHosts(conn, { container = process.env.MFAADM_CONTAINER === '
     } catch { return []; }
   };
   if (conn.kind === 'pingone') {
-    let as = []; try { as = hosts(asBase(conn)); } catch { /* a PingFederate connection with no base URL has no authorization host to permit */ }
-    if (conn.idp !== 'pf' && conn.idpBaseUrl) as = as.concat(hosts(asBase({ ...conn, idp: 'pf' }))); // PF login beside the PingOne default
-    return as.concat(hosts(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })));
+    return hosts(asBase(conn)).concat(hosts(mcpUrl({ region: conn.region, envId: conn.envId, endpointStyle: conn.endpointStyle })));
   }
   return hosts(conn.url);
 }

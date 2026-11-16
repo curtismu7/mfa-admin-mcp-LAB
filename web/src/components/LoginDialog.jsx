@@ -9,14 +9,14 @@ import FloatingDialog from "../floating-dialog/FloatingDialog";
 const LABEL = { SMS: "text message", VOICE: "voice call", EMAIL: "email", TOTP: "authenticator app" };
 const deviceName = (d) => `${LABEL[d.type] || d.type.toLowerCase()}${d.nickname ? ` “${d.nickname}”` : ""}${d.target ? ` (${d.target})` : ""}`;
 
-export default function LoginDialog({ conn, idp, start, onClose, onDone }) {
+export default function LoginDialog({ conn, start, onClose, onDone }) {
   // `start` is the first answer of login/start: { loginId, step, devices?, mockLogin? }.
   const [s, setS] = useState(start);
   const [f, setF] = useState({ username: start.mockLogin?.username || start.usernameHint || "", password: start.mockLogin?.password || "", otp: start.mockLogin?.otp || "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const where = idp === "pf" ? "PingFederate" : "PingOne";
+  const where = "PingOne";
 
   async function send(body) {
     setBusy(true); setErr("");

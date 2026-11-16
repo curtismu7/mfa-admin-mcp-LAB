@@ -598,50 +598,17 @@ test("the Add connection form offers the optional login hint and sends it", asyn
   await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.url === "/api/connections" && c.body.loginHint === "admin.user")).toBe(true));
 });
 
-test("PF login is only offered where a PingFederate exists: the mock simulates one, a live connection needs its own base URL", async () => {
+test("PingOne sign-in only: a card offers P1 login and no PF login, and Add connection has no authorization-server choice", async () => {
   const inter = { auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } };
-  fakeApi({ conns: [
-    conn({ id: "c1", label: "Mock sign-in", ...inter }),
-    conn({ id: "c2", label: "Live PingOne", offline: false, ...inter }),
-    conn({ id: "c3", label: "Live PF", offline: false, idp: "pf", idpBaseUrl: "https://pingfederate.example.com", ...inter }),
-  ] });
-  const user = userEvent.setup();
-  render(<App />);
-  expect(await screen.findByTestId("pf-login")).toBeEnabled(); // the mock simulates PingFederate
-  expect(screen.queryByTestId("pf-hint")).toBeNull();
-  expect(screen.queryByTestId("pf-mcp-note")).toBeNull(); // the mock simulates both, so its PF token works there
-  await pressLive(user);
-  await waitFor(() => expect(screen.getAllByTestId("conn-card")).toHaveLength(2));
-  const [plain, pf] = screen.getAllByTestId("conn-card");
-  expect(within(plain).getByTestId("pf-login")).toBeDisabled();
-  expect(within(plain).getByTestId("pf-hint")).toHaveTextContent(/PingFederate base URL/);
-  expect(within(pf).getByTestId("pf-login")).toBeEnabled();
-  expect(within(pf).queryByTestId("pf-hint")).toBeNull();
-  expect(within(plain).queryByTestId("pf-mcp-note")).toBeNull();
-  expect(within(pf).getByTestId("pf-mcp-note")).toHaveTextContent(/accepts only a PingOne sign-in.*Use P1 login for tools/);
-});
-
-test("a saved live PingOne connection gets a PingFederate base URL on its card, and then PF login is offered", async () => {
-  const inter = { auth: "interactive", clientSecret: undefined, auth_status: { signedIn: false } };
-  const api = fakeApi({ conns: [conn({ id: "c2", label: "Live PingOne", offline: false, clientId: "p1-client", ...inter })], handlers: {
-    "POST /api/connections/:id/settings": (b, st, json) => { Object.assign(st.conns[0], b.idpBaseUrl ? { idpBaseUrl: b.idpBaseUrl } : {}, b.pfClientId ? { pfClientId: b.pfClientId } : {}); return json(200, st.conns[0]); },
-  } });
+  fakeApi({ conns: [conn({ id: "c2", label: "Live PingOne", offline: false, ...inter })] });
   const user = userEvent.setup();
   render(<App />);
   await pressLive(user);
   const card = await screen.findByTestId("conn-card");
-  expect(within(card).getByTestId("pf-login")).toBeDisabled();
-  expect(within(card).getByTestId("pf-hint")).toHaveTextContent(/add it under PingFederate on this card/);
-  expect(within(card).getByTestId("card-pf-save")).toBeDisabled(); // nothing changed yet
-  expect(within(card).getByTestId("card-pf-client")).toHaveAttribute("placeholder", "p1-client"); // empty: the connection's client id is used
-  await user.type(within(card).getByTestId("card-pf-base"), "https://pingfederate.example.com");
-  await user.type(within(card).getByTestId("card-pf-client"), "pf-client");
-  await user.click(within(card).getByTestId("card-pf-save"));
-  await waitFor(() => expect(api.calls.find((c) => c.url.endsWith("/settings"))?.body).toEqual({ idpBaseUrl: "https://pingfederate.example.com", pfClientId: "pf-client" }));
-  await waitFor(() => expect(within(screen.getByTestId("conn-card")).getByTestId("pf-login")).toBeEnabled());
-  expect(screen.getByTestId("conn-card")).toHaveTextContent(/PingFederate https:\/\/pingfederate\.example\.com, PF client pf-client/);
-  expect(screen.queryByTestId("pf-hint")).toBeNull();
-  expect(screen.getByTestId("pf-mcp-note")).toHaveTextContent(/refuses its tool calls/);
+  expect(within(card).getByRole("button", { name: "P1 login" })).toBeEnabled();
+  expect(within(card).queryByRole("button", { name: /PF login/ })).toBeNull();
+  expect(screen.queryByText(/PingFederate/)).toBeNull();
+  expect(screen.queryByRole("group", { name: "Authorization server" })).toBeNull();
 });
 
 test("a sign-in that the server refuses says why next to the buttons, not only in the hidden live region", async () => {
