@@ -1,6 +1,6 @@
 # MFA Admin MCP LAB — Handoff
 
-**Date:** 2026-11-15 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the live pi.flow sign-in is proven (86 tools); real getMfaSettings and a confirm-gated write (updateMfaDeviceAuthenticationPolicy, no change) were checked live 2026-11-15/16; only the PingFederate native flow against a real PF is still open (owner-run).**
+**Date:** 2026-11-16 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the live pi.flow sign-in is proven (86 tools); real getMfaSettings and a confirm-gated write (updateMfaDeviceAuthenticationPolicy, no change) were checked live 2026-11-15/16; PingFederate sign-in was removed 2026-11-16 (the hosted PingOne MCP refused a PF-issued token with 401), so the lab is PingOne sign-in only and no PF check is open.**
 
 ---
 
@@ -22,13 +22,13 @@ Live mode is owner-run.
 
 The first real sign-in failed at the token exchange (`invalid_client: Unsupported authentication method`): the family's admin app is a confidential client and the lab's redirect login sent no secret. The owner asked for pi.flow (rule 16), so the sign-in is now PingOne's **native flow**: the page's own dialog (username and password, then a device choice and the one-time code), the server drives `/as/authorize?response_mode=pi.flow` → `/flows/{id}` → `/as/resume` → token endpoint as a **public client**. No redirect, no callback, no `returnTo`, no waiver (`docs/rule-16-waiver.md` is deleted).
 
-- Setup creates its own public **native** app `MFA Admin MCP LAB sign-in` (done in the owner's environment 2026-11-15; PingOne refuses parentheses in an app name and `+` in a description). The saved connection **PingOne hosted MCP (pi.flow)** uses it; the older **PingOne hosted MCP (set up)** card points at the confidential admin app and cannot sign in: delete it.
+- Setup creates its own public **native** app `MFA Admin MCP LAB sign-in` (done in the owner's environment 2026-11-15; PingOne refuses parentheses in an app name and `+` in a description). That app was later set aside: it gave only 2 tools (`listRoles`, `getRole`), and the saved connection **PingOne hosted MCP (pi.flow)** uses the environment's existing public app "PingOne MCP Server" instead (see "Proven" below; since #44 Setup uses that app as it is). The older **PingOne hosted MCP (set up)** card pointed at the confidential admin app and could not sign in; it was deleted.
 - Measured on the real tenant with no credentials: the flow opens (`USERNAME_PASSWORD_REQUIRED`) and needs no worker Bearer token. Then proven by the owner the same day with the environment's existing "PingOne MCP Server" app: the real password step, the code redemption and the hosted MCP accepting the token (86 tools; see "Proven 2026-11-15" below and `docs/live-checks.md`). Not run: the lab's own `MFA Admin MCP LAB sign-in` app, which gave only 2 tools (`listRoles`, `getRole`).
 - Mock sign-in: `mock.admin` / `mock-password` / code `123456` (pre-filled); `mock.nomfa` skips the code; `mock.multi` asks which device.
 
 ## 2026-11-15 (later): what changed after pi.flow, and what is left
 
-Merged on `main` (lab PR numbers), all in the running container and pinned in `AI-DEMO-Standalone` (PR 251, pin 28b6647):
+Merged on `main` (lab PR numbers), all in the running container (the `AI-DEMO-Standalone` pin moves separately: read it with `git ls-tree origin/main standalone/mfa-admin-mcp-lab` there):
 
 - **#30** pi.flow sign-in (above).
 - **#36** A PingOne connection is a **user sign-in only**: the hosted PingOne MCP server takes an administrator's own sign-in, not a worker (`client_credentials`) token. Creating one with `auth: "worker"` or a client secret is refused (400); a worker connection saved by an older build is listed without its secret and refused on every call (409 `worker_unsupported`). The sign-in sends `resource=<MCP URL>` (RFC 8707). New connections default to the documented `mcp.pingone.<region>/admin/<envId>/mcp` shape (`api` stays selectable). In Mock the role comes from the account: `mock.viewer` sees 18 read tools, `mock.admin` all 33. Setup's Management worker stays and is used only for Management API calls, never the MCP.
@@ -36,7 +36,7 @@ Merged on `main` (lab PR numbers), all in the running container and pinned in `A
 - **#35** Optional **login hint** per connection: set on the Add connection form or on the connection card (**Save hint**; an empty value clears it). It is sent as `login_hint` on the authorize request and pre-fills the dialog's username. PingOne treats it as advisory (measured: 200, normal password step).
 - **#37** A finished sign-in makes that connection the one in use, and Tools names the connection in use.
 
-Running container image `…:latest` = `…:pf-on-connection`, built from `main` (its `server/src` matches `d7cee7e` byte for byte). Rollback tags: `:pre-pf-on-connection`, `:pre-setup-app`, `:pre-424`, `:pre-login-hint`, `:user-login`, `:pi-flow`. Since #44, Setup uses the environment's public "PingOne MCP Server" app as it is. Checked live 2026-11-15: Setup chose it and changed nothing, and a real `getMfaSettings` call answered.
+Running container image `…:latest` = `…:preset-hint`, built on the Air from `main` `abbb4be` (#57) and loaded into OrbStack; the container is created from the main checkout (project `mfa-admin-mcp-lab`, data volume `p1mcp-data`, the `worker.env` mount). Rollback tag `:pre-preset-hint` (the `:remove-pf` build); older `:pre-*` tags stay in `docker images`. Tokens live in memory, so a recreate signs you out. Since #44, Setup uses the environment's public "PingOne MCP Server" app as it is. Checked live 2026-11-15: Setup chose it and changed nothing, and a real `getMfaSettings` call answered.
 
 **Proven 2026-11-15 (owner):** the hosted MCP accepts the lab's pi.flow token. The connection **PingOne hosted MCP (pi.flow)** uses the environment's existing public app "PingOne MCP Server", a redirect URI that app registers, and `resource=<MCP URL>`; Test connection listed 86 tools. A real `getMfaSettings` call answered (2026-11-15). A write through the confirm gate was checked live 2026-11-16 (403, 409 confirm_required, 409 args_hash_mismatch, then a no-change `updateMfaDeviceAuthenticationPolicy` accepted by PingOne). (PF login was removed 2026-11-16: the hosted PingOne MCP refused a PingFederate-issued token with HTTP 401.) Details: `docs/HANDOFF-2026-11-15.md` §0.
 
@@ -133,9 +133,10 @@ README, "Install with one command".
 - Connections model: each connection = MCP server URL + auth (a PingOne user sign-in through
   pi.flow with PKCE, or a custom header credential) + writes-allowed flag. The confirm gate refuses
   write/destructive tool calls unless the in-use connection allows writes.
-- PingOne hosted MCP endpoint shapes are UNVERIFIED — see `docs/live-checks.md` in the repo;
-  two shapes exist (`api.pingone.{region}/v1/environments/{envId}/mcp` vs
-  `mcp.pingone.{region}/admin/{envId}/mcp`) and tenant behavior has not been confirmed.
+- PingOne hosted MCP endpoint shape: `mcp.pingone.{region}/admin/{envId}/mcp` is the documented
+  default and answered on the real tenant (86 tools, 2026-11-15). The other shape
+  (`api.pingone.{region}/v1/environments/{envId}/mcp`, from a skill) stays selectable and
+  UNVERIFIED; see `docs/live-checks.md`.
 - The lab's automatic PingOne setup uses a Management worker app (client_credentials,
   Environment Admin) reading `~/.config/mfa-admin-mcp/worker.env` if present; otherwise
   credentials are pasted once and never stored.
