@@ -165,7 +165,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   // How to start each server when it is not running. The lab cannot start them itself: it runs in its own container with no access to Docker.
   const PRESET_START = {
     banking: { name: 'Banking MCP', folder: 'mcp-resource-server-LAB', command: 'docker compose up -d' },
-    opensearch: { name: 'OpenSearch MCP', folder: 'AI-DEMO2', command: 'docker compose --profile mcpgw up -d opensearch-mcp-server' },
+    opensearch: { name: 'OpenSearch MCP' }, // a service this lab only dials (localhost:9900/mcp by default); it names no command or folder of another project
   };
   const PRESETS = {
     banking: () => {

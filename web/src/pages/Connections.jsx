@@ -95,8 +95,14 @@ function PresetRow({ p, conns, activeId, onConnect, onSelect, say }) {
   if (!p.running) {
     return (
       <div data-testid={`preset-${p.id}`}>
-        <p><strong>{p.name} is not running</strong> at <code>{where}</code>. Start it from your <code>{p.folder}</code> folder, then press Check again:</p>
-        <p className="row"><code data-testid={`preset-${p.id}-cmd`}>{p.command}</code> <button type="button" onClick={copy}>Copy command</button></p>
+        {p.command ? (
+          <>
+            <p><strong>{p.name} is not running</strong> at <code>{where}</code>. Start it from your <code>{p.folder}</code> folder, then press Check again:</p>
+            <p className="row"><code data-testid={`preset-${p.id}-cmd`}>{p.command}</code> <button type="button" onClick={copy}>Copy command</button></p>
+          </>
+        ) : (
+          <p><strong>{p.name} is not running</strong> at <code>{where}</code>. Start it where you run it, then press Check again.</p>
+        )}
       </div>
     );
   }

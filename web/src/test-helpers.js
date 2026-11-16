@@ -25,7 +25,7 @@ export const LIVE_OK = { available: true, failed: [], needs: [] };
 export const LIVE_REFUSED = { available: false, failed: ["loopback-bind"], needs: ["the server must be bound to loopback"] };
 export const PRESETS = [
   { id: "banking", name: "Banking MCP", folder: "mcp-resource-server-LAB", command: "docker compose up -d", url: "http://localhost:8081/mcp", running: true },
-  { id: "opensearch", name: "OpenSearch MCP", folder: "AI-DEMO2", command: "docker compose --profile mcpgw up -d opensearch-mcp-server", url: "http://localhost:9900/mcp", running: false },
+  { id: "opensearch", name: "OpenSearch MCP", url: "http://localhost:9900/mcp", running: false },
 ];
 export function fakeApi({ conns = [conn()], tools = TOOLS, audit = [], handlers = {}, live = LIVE_OK, defaults = { envId: null, region: null }, presets = PRESETS } = {}) {
   const state = { conns: structuredClone(conns), calls: [], audit };
