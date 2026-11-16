@@ -1,5 +1,5 @@
 // The confirm gate's dialog is the shared FloatingDialog, and the vendored folder matches its pin.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
@@ -7,7 +7,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import { setJsonView } from "../components/JsonPane.jsx";
 
+beforeEach(() => { setJsonView("raw"); }); // the Form | JSON choice is shared module state; these assertions read the JSON text
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("floating-dialog vendoring", () => {
@@ -34,6 +36,17 @@ describe("ConfirmDialog", () => {
     expect(within(dlg).getByTestId("confirm-args")).toHaveTextContent('"username": "pat"');
     expect(within(dlg).getByTestId("confirm-hash")).toHaveTextContent("abc123hash");
     expect(within(dlg).getByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("shows the exact arguments through JsonPane: the Form view names each field, the target keys stand out, and nothing is capped", () => {
+    setJsonView("form");
+    render(<ConfirmDialog tool="deleteFidoPolicy" gate={{ arguments: { environmentId: "e1", userId: "u9", note: "<i>x</i>" }, argsHash: "h", requiresTypedName: true }} onConfirm={() => {}} onCancel={() => {}} />);
+    const pane = screen.getByTestId("confirm-args");
+    expect(pane).toHaveTextContent("userId");
+    expect(pane).toHaveTextContent("u9");
+    expect(pane.querySelectorAll('[data-hot="true"]')).toHaveLength(2); // environmentId and userId
+    expect(pane.querySelector("i")).toBeNull();
+    expect(pane).toHaveTextContent("<i>x</i>");
   });
 
   it("Escape cancels once and confirms nothing; Confirm returns the typed name", async () => {

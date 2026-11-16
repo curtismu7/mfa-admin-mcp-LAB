@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../api.js";
-import { pretty } from "../lib/format.js";
+import { HOT_TARGET } from "../lib/format.js";
 import { Untrusted } from "../lib/Untrusted.jsx";
+import Json from "../components/JsonPane.jsx";
 
 export default function Audit() {
   const [entries, setEntries] = useState(null);
@@ -22,7 +23,7 @@ export default function Audit() {
                 <tr key={`${e.at}${i}`} data-testid="audit-row">
                   <td>{e.at}</td><td><Untrusted text={e.connection} /></td><td><Untrusted text={e.tool} /></td><td>{e.class || "-"}</td>
                   <td><span className={`badge ${e.outcome === "ok" ? "badge--read" : "badge--write"}`}>{e.outcome}</span></td>
-                  <td><code>{(e.argsHash || "").slice(0, 12)}</code></td><td><Untrusted block text={pretty(e.args)} /></td>
+                  <td><code>{(e.argsHash || "").slice(0, 12)}</code></td><td><Json value={e.args} label="Arguments" hot={HOT_TARGET} /></td>
                 </tr>
               ))}
             </tbody>

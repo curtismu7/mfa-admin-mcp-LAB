@@ -3,9 +3,10 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App.jsx";
+import { setJsonView } from "./components/JsonPane.jsx";
 import { conn, ENV, fakeApi, LIVE_REFUSED, PRESETS, TOOLS } from "./test-helpers.js";
 
-beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catch { /* none */ } delete document.documentElement.dataset.present; });
+beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catch { /* none */ } delete document.documentElement.dataset.present; setJsonView("raw"); });
 const pressLive = async (user) => { await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); await user.selectOptions(screen.getByTestId("mode-select"), "real"); };
 const live = () => { try { localStorage.setItem("mfaadm.mode", "live"); } catch { /* none */ } };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -262,6 +263,31 @@ test("tools explorer: groups, search, badges with the why, writes-off state; ser
   await userEvent.setup().type(screen.getByLabelText("Search"), "fido");
   expect(screen.queryByRole("heading", { name: /^Users/ })).toBeNull();
   expect(screen.getByRole("heading", { name: /^Policies/ })).toBeInTheDocument();
+});
+
+test("the call view shows the request and the response through the shared JsonPane: Form first, the JSON text on demand, hostile text stays text", async () => {
+  fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(200, { class: "read", warnings: [], result: { isError: false, content: [{ type: "text", text: "<b>sms on</b>" }] } }) } });
+  setJsonView("form");
+  go("#/tool/getMfaSettings");
+  render(<App />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Call" }));
+  const view = await screen.findByTestId("call-view");
+  const req = within(view).getByTestId("call-request");
+  const res = within(view).getByTestId("call-response");
+  expect(req.tagName).toBe("DIV"); // the Form view: a label and a value per field, not JSON text
+  expect(req).toHaveTextContent("method");
+  expect(req).not.toHaveTextContent('"method"');
+  expect(req.querySelector('[data-hot="true"]')).not.toBeNull(); // method / name / environmentId stand out
+  expect(res.querySelector('[data-hot="true"]')).not.toBeNull(); // isError stands out
+  expect(res).toHaveTextContent("<b>sms on</b>");
+  expect(view.querySelector("b")).toBeNull();
+  expect(within(view).getAllByRole("button", { name: "JSON" })).toHaveLength(2); // one toggle per pane
+  await user.click(within(view).getAllByRole("button", { name: "JSON" })[0]);
+  expect(within(view).getByTestId("call-request").tagName).toBe("PRE"); // one choice for the page: both panes switch
+  expect(within(view).getByTestId("call-response").tagName).toBe("PRE");
+  expect(within(view).getByTestId("call-request")).toHaveTextContent(/"method": "tools\/call"/);
+  expect(within(view).getByTestId("call-response")).toHaveTextContent(/"isError": false/);
 });
 
 test("tool page: environmentId prefilled, JSON/Form toggle, snake_case warning, read runs directly", async () => {

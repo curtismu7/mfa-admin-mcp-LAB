@@ -148,7 +148,9 @@ try {
   await page.getByRole('button', { name: 'Call', exact: true }).click();
   await page.getByTestId('call-view').waitFor();
   const read = await page.getByTestId('call-view').innerText();
-  check(read.includes('sample.user') && read.includes('"method": "tools/call"'), 'read call ran directly; request and response shown');
+  check(read.includes('sample.user') && read.includes('tools/call') && !read.includes('"method"'), 'read call ran directly; request and response shown as a Form (the default view)');
+  await page.getByTestId('call-view').getByRole('button', { name: 'JSON', exact: true }).first().click();
+  check((await page.getByTestId('call-view').innerText()).includes('"method": "tools/call"'), 'the JSON view shows the exact request text');
   await shot('3-tool-read');
 
   // blocked write
