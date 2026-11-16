@@ -309,7 +309,7 @@ test('preset status: in Live each preset says whether its server answers and how
     assert.deepEqual([b.id, b.running, b.name], ['banking', true, 'Banking MCP']);
     assert.deepEqual([o.id, o.running, o.url], ['opensearch', false, 'http://127.0.0.1:1/mcp']);
     assert.deepEqual([b.folder, b.command], ['mcp-resource-server-LAB', 'docker compose up -d']);
-    assert.deepEqual([o.folder, o.command], ['AI-DEMO2', 'docker compose --profile mcpgw up -d opensearch-mcp-server']);
+    assert.deepEqual([o.folder, o.command], [undefined, undefined], 'OpenSearch names no command or folder of another project');
     assert.equal(b.token, undefined, 'the status carries no token');
   } finally { await t.close(); up.close(); }
 });

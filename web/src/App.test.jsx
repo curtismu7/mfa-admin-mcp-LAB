@@ -112,10 +112,10 @@ test("Working demos: a running server offers Connect, then Use once connected; a
   expect(within(bank).getByRole("button", { name: "Use Banking MCP (connected)" })).toBeInTheDocument(); // already saved: Use, not Add
   expect(bank).toHaveTextContent("running at localhost:8081/mcp");
   const os = screen.getByTestId("preset-opensearch");
-  expect(os).toHaveTextContent(/OpenSearch MCP is not running at localhost:9900\/mcp\. Start it from your AI-DEMO2 folder/);
-  expect(within(os).getByTestId("preset-opensearch-cmd")).toHaveTextContent("docker compose --profile mcpgw up -d opensearch-mcp-server");
-  expect(within(os).queryByRole("button", { name: /Connect|Use/ })).toBeNull();
-  expect(within(os).getByRole("button", { name: "Copy command" })).toBeInTheDocument();
+  expect(os).toHaveTextContent(/OpenSearch MCP is not running at localhost:9900\/mcp\. Start it where you run it, then press Check again\./);
+  expect(os).not.toHaveTextContent(/AI-DEMO2|docker compose/); // no command or folder of another project
+  expect(within(os).queryByTestId("preset-opensearch-cmd")).toBeNull();
+  expect(within(os).queryByRole("button", { name: /Connect|Use|Copy command/ })).toBeNull();
   expect(within(screen.getByTestId("preset-x")).getByRole("button", { name: "Connect to Third MCP" })).toBeInTheDocument();
   await user.click(within(bank).getByRole("button", { name: "Use Banking MCP (connected)" }));
   expect(await within(screen.getByTestId("preset-banking")).findByRole("button", { name: "Banking MCP in use" })).toBeDisabled();
