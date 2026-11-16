@@ -1,6 +1,6 @@
 # MFA Admin MCP LAB — Handoff
 
-**Date:** 2026-11-15 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the live pi.flow sign-in is proven (86 tools); a real getMfaSettings call is owner-run and not yet done.**
+**Date:** 2026-11-15 · **Owner:** curtismu7 · **Status: WORKING — pi.flow sign-in, user-sign-in-only PingOne connections, audit as sent and login hint are merged and running; the live pi.flow sign-in is proven (86 tools); real getMfaSettings and a confirm-gated write (updateMfaDeviceAuthenticationPolicy, no change) were checked live 2026-11-15/16; only the PingFederate native flow against a real PF is still open (owner-run).**
 
 ---
 
@@ -38,7 +38,7 @@ Merged on `main` (lab PR numbers), all in the running container and pinned in `A
 
 Running container image `…:latest` = `…:pf-on-connection`, built from `main` (its `server/src` matches `d7cee7e` byte for byte). Rollback tags: `:pre-pf-on-connection`, `:pre-setup-app`, `:pre-424`, `:pre-login-hint`, `:user-login`, `:pi-flow`. Since #44, Setup uses the environment's public "PingOne MCP Server" app as it is. Checked live 2026-11-15: Setup chose it and changed nothing, and a real `getMfaSettings` call answered.
 
-**Proven 2026-11-15 (owner):** the hosted MCP accepts the lab's pi.flow token. The connection **PingOne hosted MCP (pi.flow)** uses the environment's existing public app "PingOne MCP Server", a redirect URI that app registers, and `resource=<MCP URL>`; Test connection listed 86 tools. A real `getMfaSettings` call answered (2026-11-15). **Still open (owner-run):** a write through the confirm gate. (PF login was removed 2026-11-16: the hosted PingOne MCP refused a PingFederate-issued token with HTTP 401.) Details: `docs/HANDOFF-2026-11-15.md` §0.
+**Proven 2026-11-15 (owner):** the hosted MCP accepts the lab's pi.flow token. The connection **PingOne hosted MCP (pi.flow)** uses the environment's existing public app "PingOne MCP Server", a redirect URI that app registers, and `resource=<MCP URL>`; Test connection listed 86 tools. A real `getMfaSettings` call answered (2026-11-15). A write through the confirm gate was checked live 2026-11-16 (403, 409 confirm_required, 409 args_hash_mismatch, then a no-change `updateMfaDeviceAuthenticationPolicy` accepted by PingOne). (PF login was removed 2026-11-16: the hosted PingOne MCP refused a PingFederate-issued token with HTTP 401.) Details: `docs/HANDOFF-2026-11-15.md` §0.
 
 ## Recent work (2026-11-13→14, 17 PRs, all CI green)
 
