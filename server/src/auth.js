@@ -158,7 +158,9 @@ export function createAuth({ resolveBase, fetchImpl = fetch, now = Date.now, log
     const authorizeEndpoint = ep({ ...conn, idp: eff }, 'authorize'); // throws pf_not_configured before any state exists
     pruneLogins();
     const nonce = b64u(crypto.randomBytes(24)); const verifier = b64u(crypto.randomBytes(48));
-    const redirectUri = conn.redirectUri || PI_FLOW_REDIRECT_URI;
+    // The saved redirect URI belongs to the connection's default sign-in app. A PF login on a PingOne-default connection uses the
+    // lab's own placeholder, which is what its PingFederate client registers (the PingOne app's URI is not registered there).
+    const redirectUri = (eff === 'pf' && conn.idp !== 'pf' ? '' : conn.redirectUri) || PI_FLOW_REDIRECT_URI;
     const q = new URLSearchParams(withResource(conn, eff, { response_type: 'code', client_id: clientOf(conn, eff), redirect_uri: redirectUri, scope: 'openid offline_access', nonce, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256', response_mode: 'pi.flow' }));
     if (conn.loginHint) q.set('login_hint', conn.loginHint); // advisory for PingOne (the dialog still takes whatever is typed); PingFederate binds the flow to it
     let res; let flow = null;

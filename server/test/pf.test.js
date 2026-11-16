@@ -156,12 +156,15 @@ test('auth: PF login on a PingOne-default connection uses the PingFederate clien
   const stub = stubPf({ aud: 'pf-only-client' });
   let t = Date.now();
   const a = createAuth({ resolveBase: () => null, fetchImpl: stub.fetchImpl, now: () => t });
-  const c = pfConn({ idp: 'pingone', clientId: 'p1-client', pfClientId: 'pf-only-client' });
+  const c = pfConn({ idp: 'pingone', clientId: 'p1-client', pfClientId: 'pf-only-client', redirectUri: 'http://127.0.0.1:7474/callback' }); // the PingOne app's URI, from Setup
   const s = await a.startLogin(c, { idp: 'pf' });
   assert.equal((await a.loginStep(c, { loginId: s.loginId, action: 'password', username: 'pf.user', password: 'right' })).step, 'done');
   assert.equal(stub.authorizeQueries[0].get('client_id'), 'pf-only-client');
   assert.equal(stub.authorizeQueries[0].get('resource'), null, 'no RFC 8707 resource is sent to PingFederate');
   assert.deepEqual([stub.tokenBodies[0].get('grant_type'), stub.tokenBodies[0].get('client_id')], ['authorization_code', 'pf-only-client']);
+  // the PingOne app's redirect URI is not sent to PingFederate: the lab's placeholder is, at authorize and at the code redemption
+  assert.equal(stub.authorizeQueries[0].get('redirect_uri'), PI_FLOW_REDIRECT_URI);
+  assert.equal(stub.tokenBodies[0].get('redirect_uri'), PI_FLOW_REDIRECT_URI);
   t += 3_600_000; // past expiry: the next token use refreshes
   assert.equal(await a.accessToken(c), 'pf-at');
   assert.deepEqual([stub.tokenBodies[1].get('grant_type'), stub.tokenBodies[1].get('client_id'), stub.tokenBodies[1].get('resource')], ['refresh_token', 'pf-only-client', null]);
@@ -173,4 +176,13 @@ test('auth: a PingFederate issuer that is its plain base URL (no /as) is accepte
   assert.equal(plain.error, undefined); assert.equal(plain.value.step, 'done');
   const foreign = await signIn({ iss: 'https://evil.example' });
   assert.equal(foreign.error.code, 'iss_mismatch');
+});
+
+test('auth: a connection that signs in at PingFederate by default keeps its own saved redirect URI', async () => {
+  const stub = stubPf(); const a = createAuth({ resolveBase: () => null, fetchImpl: stub.fetchImpl });
+  const c = pfConn({ redirectUri: 'https://app.example/cb' });
+  const s = await a.startLogin(c, { idp: 'pf' });
+  await a.loginStep(c, { loginId: s.loginId, action: 'password', username: 'pf.user', password: 'right' });
+  assert.equal(stub.authorizeQueries[0].get('redirect_uri'), 'https://app.example/cb');
+  assert.equal(stub.tokenBodies[0].get('redirect_uri'), 'https://app.example/cb');
 });
