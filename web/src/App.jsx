@@ -4,6 +4,7 @@ import fs from "node:fs";
 import ReturnLink from "./return-link/ReturnLink.jsx";
 import * as api from "./api.js";
 import Banner from "./components/Banner.jsx";
+import VerifyMark from "./components/VerifyMark.jsx";
 import TestResultModal from "./components/TestResultModal.jsx";
 import Audit from "./pages/Audit.jsx";
 import Connections from "./pages/Connections.jsx";
@@ -162,6 +163,7 @@ function Shell() {
               onReset={reset}
             >
               <ReturnLink app="mfa-admin-mcp" variant="header" />
+              <VerifyMark id="mfa-admin-mcp" />
               <span className="chip" data-testid="mode">Mode: {mode}</span>
             </TopMenu>
           </div>
