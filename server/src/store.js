@@ -10,20 +10,6 @@ import { isPrivateLiteral, validEnvId, validRegion } from './urls.js';
 
 const KINDS = new Set(['pingone', 'custom', 'raw']);
 
-// A PingFederate base URL: https (http only on loopback), no credentials. Empty means none.
-function cleanIdpBase(v) {
-  const u = String(v ?? '').trim().slice(0, 300);
-  if (!u) return '';
-  let bUrl; try { bUrl = new URL(u); } catch { bUrl = null; }
-  const ok = bUrl && ((bUrl.protocol === 'https:') || (bUrl.protocol === 'http:' && isLoopbackHost(bUrl.hostname)));
-  if (!ok || bUrl.username || bUrl.password) throw Object.assign(new Error('idpBaseUrl must be an https URL (http only for a loopback address), without credentials'), { code: 'bad_request' });
-  return u;
-}
-function cleanPfClientId(v) {
-  const s = String(v ?? '').trim();
-  if (s.length > 120 || /[\s\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error('pfClientId must be a client id without spaces (at most 120 characters)'), { code: 'bad_request' });
-  return s;
-}
 export const WORKER_REFUSED = 'The hosted PingOne MCP server takes a user sign-in (pi.flow), not a worker (client_credentials) token: save the connection without auth "worker" and without a client secret, then sign in. (Setup\'s Management worker only creates the sign-in application; it never calls the MCP server.)';
 
 // login_hint: the username to offer in the sign-in dialog (and send to the authorization server). Plain text, no control characters.
@@ -46,8 +32,14 @@ const str = (v, n = 200) => String(v ?? '').trim().slice(0, n);
 
 export function createStore({ dir }) {
   const file = path.join(dir, 'connections.json');
+  // PingFederate settings saved by an older build (idp, idpBaseUrl, pfClientId; PF login was removed 2026-11-16) are ignored here and
+  // leave the file with the next write.
+  const OLD_PF = ['idp', 'idpBaseUrl', 'pfClientId'];
   function load() {
-    try { const p = JSON.parse(fs.readFileSync(file, 'utf8')); return p && typeof p === 'object' ? p : {}; } catch { return {}; }
+    let p; try { p = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
+    if (!p || typeof p !== 'object') return {};
+    for (const rec of Object.values(p)) if (rec && typeof rec === 'object') for (const k of OLD_PF) delete rec[k];
+    return p;
   }
   function save(all) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -72,14 +64,6 @@ export function createStore({ dir }) {
       rec.auth = 'interactive';
       // mcp-host is the shape Ping's MCP docs name; api stays selectable (UNVERIFIED, see urls.js).
       rec.endpointStyle = b.endpointStyle === 'api' ? 'api' : 'mcp-host';
-      // Which authorization server signs the tokens: PingOne (default) or a PingFederate instance.
-      // PF is only meaningful for interactive sign-in (it must run an OAuth app for this tool's PKCE flow).
-      rec.idp = b.idp === 'pf' ? 'pf' : 'pingone';
-      if (rec.idp === 'pf') {
-        rec.idpBaseUrl = cleanIdpBase(b.idpBaseUrl);
-        // required unless the connection is the offline mock: a clean https (or loopback http) base; the /as suffix is appended by urls.asBase
-        if (!rec.idpBaseUrl && !rec.offline) throw new Error('PingFederate needs its base URL (idpBaseUrl), for example https://pingfederate.example.com');
-      }
       rec.clientId = str(b.clientId, 120);
       if (b.loginHint) rec.loginHint = cleanLoginHint(b.loginHint);
       if (!rec.clientId) throw new Error('clientId is required');
@@ -106,16 +90,6 @@ export function createStore({ dir }) {
     if (!rec) return null;
     if (typeof patch.allowWrites === 'boolean') rec.allowWrites = patch.allowWrites;
     if (rec.kind === 'pingone' && rec.auth === 'interactive' && typeof patch.loginHint === 'string') { const h = cleanLoginHint(patch.loginHint); if (h) rec.loginHint = h; else delete rec.loginHint; }
-    // PingFederate on a saved live connection: its base URL (enables PF login beside P1 login) and, optionally, the client id of the
-    // OAuth client on that PingFederate (else the connection's client id). An empty value removes it; a pf-default connection keeps its base.
-    if (rec.kind === 'pingone' && rec.auth === 'interactive' && !rec.offline) {
-      if (typeof patch.idpBaseUrl === 'string') {
-        const u = cleanIdpBase(patch.idpBaseUrl);
-        if (!u && rec.idp === 'pf') throw Object.assign(new Error('PingFederate needs its base URL (idpBaseUrl): this connection signs in at PingFederate by default'), { code: 'bad_request' });
-        if (u) rec.idpBaseUrl = u; else delete rec.idpBaseUrl;
-      }
-      if (typeof patch.pfClientId === 'string') { const c = cleanPfClientId(patch.pfClientId); if (c) rec.pfClientId = c; else delete rec.pfClientId; }
-    }
     save(all); return rec;
   }
   // Reset: every connection goes back to writes off (the safe state). Saved connections and their secrets are kept.

@@ -70,11 +70,8 @@ const MOCK_USERS = {
   'mock.admin': { devices: [SMS], role: 'admin' }, 'mock.viewer': { devices: [SMS], role: 'viewer' },
   'mock.nomfa': { devices: [], role: 'admin' }, 'mock.multi': { devices: [SMS, EMAIL], role: 'admin' },
 };
-// PingOne and PingFederate name the same steps differently (vendor content types, error codes); the mock answers both.
-const FLOW_KINDS = {
-  pingone: { password: 'usernamePassword.check', otp: 'otp.check', device: 'device.select', badPassword: 'INVALID_CREDENTIALS', badOtp: 'OTP_VALIDATION_FAILED' },
-  pf: { password: 'checkUsernamePassword', otp: 'checkOtp', device: 'selectDevice', cont: 'continueAuthentication', badPassword: 'CREDENTIAL_VALIDATION_FAILED', badOtp: 'INVALID_OTP' },
-};
+// PingOne's native-flow step names (vendor content types) and error codes.
+const FLOW = { password: 'usernamePassword.check', otp: 'otp.check', device: 'device.select', badPassword: 'INVALID_CREDENTIALS', badOtp: 'OTP_VALIDATION_FAILED' };
 const vnd = (name) => `application/vnd.pingidentity.${name}+json`;
 const stripRole = ({ role, ...t }) => t;
 
@@ -205,10 +202,10 @@ export function createMock({ now = Date.now } = {}) {
   // ---- native flow (response_mode=pi.flow): POST steps to the flow, carrying the session-token cookie that rotates on every step.
   const stCookie = (flow) => ({ 'Set-Cookie': `ST=${flow.st}; Path=/; HttpOnly` });
   const flowView = (flow, extra = {}) => ({ id: flow.id, status: flow.status, ...extra });
-  function openFlow(parts, q) {
+  function openFlow(envId, q) {
     if (q.get('response_type') !== 'code' || q.get('response_mode') !== 'pi.flow' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge') || !q.get('nonce') || !q.get('redirect_uri') || !q.get('client_id')) return null;
     if (q.has('resource')) config.resources.push({ at: 'authorize', resource: q.get('resource') });
-    const flow = { id: `mockflow${crypto.randomBytes(8).toString('hex')}`, kind: parts[2] === 'pf' ? 'pf' : 'pingone', clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), challenge: q.get('code_challenge'), nonce: q.get('nonce'), envId: parts[0], status: 'USERNAME_PASSWORD_REQUIRED', st: crypto.randomBytes(12).toString('hex') };
+    const flow = { id: `mockflow${crypto.randomBytes(8).toString('hex')}`, clientId: q.get('client_id'), redirectUri: q.get('redirect_uri'), challenge: q.get('code_challenge'), nonce: q.get('nonce'), envId, status: 'USERNAME_PASSWORD_REQUIRED', st: crypto.randomBytes(12).toString('hex') };
     flows.set(flow.id, flow);
     return flow;
   }
@@ -220,14 +217,13 @@ export function createMock({ now = Date.now } = {}) {
     return code;
   }
   async function flowStep(req, res, flow) {
-    const k = FLOW_KINDS[flow.kind];
+    const k = FLOW;
     const ct = String(req.headers['content-type'] || '').split(';')[0].trim();
-    if (flow.kind === 'pf' && !req.headers['x-xsrf-header']) return send(res, 403, { code: 'CSRF_REQUIRED' });
     const sent = /(?:^|;\s*)ST=([^;]+)/.exec(String(req.headers.cookie || ''))?.[1];
     if (sent !== flow.st) return send(res, 401, { code: 'INVALID_TOKEN', message: 'Session token cookie value does not match' });
     let b; try { b = JSON.parse(await readBody(req) || '{}'); } catch { return send(res, 400, { code: 'INVALID_REQUEST' }); }
-    const done = (extra) => { flow.st = crypto.randomBytes(12).toString('hex'); config.flowSteps.push({ kind: flow.kind, status: flow.status, contentType: ct }); return send(res, 200, flowView(flow, extra), 'application/json', stCookie(flow)); };
-    const finishFlow = () => { flow.status = 'COMPLETED'; flow.code = issueCode(flow); return done(flow.kind === 'pf' ? { authorizeResponse: { code: flow.code } } : { resumeUrl: `${base}/${flow.envId}/as/resume?flowId=${flow.id}` }); };
+    const done = (extra) => { flow.st = crypto.randomBytes(12).toString('hex'); config.flowSteps.push({ status: flow.status, contentType: ct }); return send(res, 200, flowView(flow, extra), 'application/json', stCookie(flow)); };
+    const finishFlow = () => { flow.status = 'COMPLETED'; flow.code = issueCode(flow); return done({ resumeUrl: `${base}/${flow.envId}/as/resume?flowId=${flow.id}` }); };
     const stepName = Object.entries(k).find(([, v]) => v && ct === vnd(v))?.[0];
     if (stepName === 'password' && flow.status === 'USERNAME_PASSWORD_REQUIRED') {
       const u = MOCK_USERS[b.username];
@@ -239,7 +235,7 @@ export function createMock({ now = Date.now } = {}) {
       return done(deviceBody(flow, u.devices));
     }
     if (stepName === 'device' && (flow.status === 'DEVICE_SELECTION_REQUIRED' || flow.status === 'OTP_REQUIRED')) {
-      const id = flow.kind === 'pf' ? b.deviceRef?.id : b.device?.id;
+      const id = b.device?.id;
       const dev = flow.devices.find((d) => d.id === id);
       if (!dev) return send(res, 400, { code: 'INVALID_DATA', details: [{ code: 'INVALID_VALUE', message: 'unknown device' }] });
       flow.status = 'OTP_REQUIRED';
@@ -247,22 +243,15 @@ export function createMock({ now = Date.now } = {}) {
     }
     if (stepName === 'otp' && flow.status === 'OTP_REQUIRED') {
       if (b.otp !== MOCK_LOGIN.otp) return send(res, 400, { code: 'INVALID_DATA', details: [{ code: k.badOtp, message: 'The passcode is not valid' }] });
-      if (flow.kind === 'pf') { flow.status = 'MFA_COMPLETED'; return done(); }
       return finishFlow();
     }
-    if (stepName === 'cont' && flow.status === 'MFA_COMPLETED') return finishFlow();
     return send(res, stepName ? 400 : 415, { code: stepName ? 'INVALID_FLOW_STATE' : 'UNSUPPORTED_MEDIA_TYPE', message: `${flow.status}: that step is not allowed now` });
   }
 
   async function handle(req, res) {
     const url = new URL(req.url, base || 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
-    // PingFederate names the same three endpoints differently; the mock answers both so the PF sign-in can be shown in Mock mode.
-    if (parts[1] === 'as' && parts[2] === 'authorization.oauth2') parts[2] = 'authorize';
-    if (parts[1] === 'as' && parts[2] === 'token.oauth2') parts[2] = 'token';
-    if (parts[1] === 'pf' && parts[2] === 'JWKS') { parts[1] = 'as'; parts[2] = 'jwks'; }
-    if (parts[1] === 'flows' && parts[2] && req.method === 'POST') { const f = flows.get(parts[2]); return f && f.kind === 'pingone' && f.envId === parts[0] ? flowStep(req, res, f) : send(res, 404, { code: 'NOT_FOUND' }); }
-    if (parts[0] === 'pf-ws' && parts[1] === 'authn' && parts[2] === 'flows' && parts[3] && req.method === 'POST') { const f = flows.get(parts[3]); return f && f.kind === 'pf' ? flowStep(req, res, f) : send(res, 404, { code: 'NOT_FOUND' }); }
+    if (parts[1] === 'flows' && parts[2] && req.method === 'POST') { const f = flows.get(parts[2]); return f && f.envId === parts[0] ? flowStep(req, res, f) : send(res, 404, { code: 'NOT_FOUND' }); }
     if (parts[1] === 'as' && parts[2] === 'resume' && req.method === 'GET') {
       const f = flows.get(url.searchParams.get('flowId') || '');
       const sent = /(?:^|;\s*)ST=([^;]+)/.exec(String(req.headers.cookie || ''))?.[1];
@@ -302,8 +291,7 @@ export function createMock({ now = Date.now } = {}) {
     }
     if (parts[1] === 'as' && parts[2] === 'authorize') {
       // Only the native flow: a redirect request is refused, the way an app that does not allow it would refuse it (rule 16).
-      const pfName = url.pathname.endsWith('/authorization.oauth2');
-      const flow = openFlow([...parts.slice(0, 2), pfName ? 'pf' : 'pingone'], url.searchParams);
+      const flow = openFlow(parts[0], url.searchParams);
       if (!flow) return send(res, 400, { error: 'invalid_request', error_description: 'this mock authorization server answers only response_mode=pi.flow with code + PKCE S256 and a nonce' });
       return send(res, 200, flowView(flow), 'application/json', stCookie(flow));
     }

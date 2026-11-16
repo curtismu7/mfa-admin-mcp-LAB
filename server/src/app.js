@@ -202,7 +202,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
     catch (err) { res.status(400).json({ error: 'bad_request', message: scrub(err.message, [body.token]) }); }
   });
   app.delete('/api/connections/:id', h((_req, res, conn) => { auth.logout(conn); store.remove(conn.id); health.refresh(); res.json({ ok: true }); }, { noNetwork: true }));
-  app.post('/api/connections/:id/settings', h((req, res, conn) => res.json(view(store.update(conn.id, { allowWrites: req.body?.allowWrites, loginHint: req.body?.loginHint, idpBaseUrl: req.body?.idpBaseUrl, pfClientId: req.body?.pfClientId }))), { noNetwork: true }));
+  app.post('/api/connections/:id/settings', h((req, res, conn) => res.json(view(store.update(conn.id, { allowWrites: req.body?.allowWrites, loginHint: req.body?.loginHint }))), { noNetwork: true }));
 
   // ---- tools, health card
   async function listAnnotated(conn) { return annotate(await clientFor(conn).listTools()); }
@@ -328,7 +328,7 @@ export function createApp({ env = process.env, lab = labAllowedHosts(env), store
   // code are passed on and never stored or logged; an error message that could carry one is scrubbed of it.
   const STEP_ACTIONS = new Set(['password', 'otp', 'device']);
   app.post('/api/connections/:id/login/start', h(async (req, res, conn) => {
-    const r = await auth.startLogin(conn, { idp: req.body?.idp });
+    const r = await auth.startLogin(conn);
     res.json({ ok: true, ...r, ...(isMock(conn) ? { mockLogin: MOCK_LOGIN } : {}) });
   }));
   app.post('/api/connections/:id/login/step', h(async (req, res, conn) => {
