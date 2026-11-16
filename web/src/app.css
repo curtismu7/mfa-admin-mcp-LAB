@@ -75,7 +75,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-hei
 .redirect { background: var(--surface-2); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
 
 .untrusted { white-space: pre-wrap; overflow-wrap: anywhere; }
-.untrusted--block { display: block; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0; max-height: 22rem; overflow: auto; font-size: 12px; }
+.untrusted--block { display: block; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0; font-size: 12px; }
 .scroll { overflow-x: auto; }
 .test-tools { max-height: 18rem; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; margin: 8px 0; }
 .test-tools h3 { margin: 8px 0 4px; font-size: 14px; }

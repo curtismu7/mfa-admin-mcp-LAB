@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { pretty } from "../lib/format.js";
+import { HOT_TARGET } from "../lib/format.js";
 import FloatingDialog from "../floating-dialog/FloatingDialog";
+import Json from "./JsonPane.jsx";
 
 // The confirm gate's second look: the exact arguments, their hash, and for a destructive call the tool name typed.
 // The frame is the shared FloatingDialog (modal, movable, resizable, pop-out); Escape and the title-bar close both cancel.
@@ -15,7 +16,7 @@ export default function ConfirmDialog({ tool, gate, onConfirm, onCancel, busy })
     <FloatingDialog isOpen onClose={onCancel} title={heading} ariaLabel={heading} footer={null} className="confirm-dialog"
       testId="confirm-dialog" storageKey="mfa-admin-mcp.confirm" defaultWidth={576} defaultHeight={null} minHeight={200}>
       <p id="confirm-d">These are the exact arguments that will be sent. If any argument changes, the hash changes and the call is refused.</p>
-      <pre className="untrusted untrusted--block" data-testid="confirm-args">{pretty(gate.arguments)}</pre>
+      <Json value={gate.arguments} label="Arguments to send" testId="confirm-args" hot={HOT_TARGET} />
       <p>Arguments hash: <code data-testid="confirm-hash">{gate.argsHash}</code></p>
       {needName && (
         <label className="field">Type <code>{tool}</code> to confirm

@@ -54,6 +54,8 @@ export function redactForDisplay(v, depth = 0) {
   return v;
 }
 export const pretty = (v) => JSON.stringify(v, null, 2);
+// The keys that say WHICH resource a call touches: stood out in every JSON pane that shows arguments (JsonPane `hot`).
+export const HOT_TARGET = ["environmentId", "policyId", "userId", "tokenId", "settingsId", "applicationId", "populationId"];
 
 export function countdown(expiresAt, now) {
   const s = Math.floor((expiresAt - now) / 1000);

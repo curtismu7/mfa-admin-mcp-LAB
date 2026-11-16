@@ -1,6 +1,6 @@
 import React from "react";
-import { pretty } from "../lib/format.js";
 import FloatingDialog from "../floating-dialog/FloatingDialog";
+import Json from "./JsonPane.jsx";
 import { Untrusted } from "../lib/Untrusted.jsx";
 import { ClassBadge } from "../pages/Tools.jsx";
 
@@ -42,7 +42,7 @@ export default function TestResultModal({ conn, test, busy, onClose }) {
           {!ok && (
             <div>
               {test.error && <p>Error: <code data-testid="test-error">{test.error}</code></p>}
-              {test.message && <pre className="untrusted untrusted--block" data-testid="test-message">{pretty(test.message)}</pre>}
+              {test.message && <Json value={test.message} label="Server message" testId="test-message" />}
               {test.hint && <p className="hint">{test.hint}</p>}
             </div>
           )}
