@@ -9,11 +9,11 @@ const KEYS = { vertical: "mfaadm.story.vertical", path: "mfaadm.story.path", ope
 const read = (k, fallback) => { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked: not remembered */ } };
 
-export default function StoryPanel({ mode, present = false }) {
+export default function StoryPanel({ mode, present = false, defaultOpen = false }) {
   const raw = storyForMode(mode);
   const [verticalId, setVerticalId] = useState(() => read(KEYS.vertical, "generic"));
   const [path, setPath] = useState(() => (read(KEYS.path, "happy") === "blocked" ? "blocked" : "happy"));
-  const [open, setOpen] = useState(() => read(KEYS.open, "open") !== "closed");
+  const [open, setOpen] = useState(() => read(KEYS.open, defaultOpen ? "open" : "closed") === "open"); // closed by default (owner, 2026-11-16) except where the page is the talk track; a saved choice wins
   const [active, setActive] = useState(null);
   const vertical = verticalById(verticalId);
   const story = useMemo(() => (raw ? fillAll(raw, vertical) : null), [raw, vertical]);

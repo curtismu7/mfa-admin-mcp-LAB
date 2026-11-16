@@ -317,6 +317,24 @@ test("tool page: environmentId prefilled, JSON/Form toggle, snake_case warning, 
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
+test("the talk track starts closed on a working page and open on the Stories page; opening it is remembered", async () => {
+  fakeApi();
+  go("#/tools");
+  render(<App />);
+  const user = userEvent.setup();
+  const panel = await screen.findByTestId("story-panel");
+  expect(within(panel).getByRole("button", { name: "Show talk track" })).toHaveAttribute("aria-expanded", "false");
+  expect(within(panel).queryByText("Goal")).toBeNull();
+  await user.click(within(panel).getByRole("button", { name: "Show talk track" }));
+  expect(within(panel).getByText("Goal")).toBeInTheDocument();
+  expect(localStorage.getItem("mfaadm.story.open")).toBe("open");
+  cleanup(); localStorage.clear();
+  go("#/stories");
+  render(<App />);
+  await screen.findByText("Why do I only see a short tool list?");
+  for (const p of screen.getAllByTestId("story-panel")) expect(within(p).getByRole("button", { name: "Hide talk track" })).toHaveAttribute("aria-expanded", "true");
+});
+
 test("a blocked write shows why and sends exactly one call", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(403, { error: "writes_disabled", message: '"createUser" is a write tool. Turn on "allow writes".', class: "write", warnings: [] }) } });
   go("#/tool/createFidoPolicy");
@@ -510,6 +528,18 @@ test("a failed test shows the error class and message in the modal", async () =>
   await waitFor(() => expect(within(dlg2).getByTestId("test-verdict")).toHaveTextContent(/did not work/));
   expect(within(dlg2).getByTestId("test-error")).toHaveTextContent("mcp_unreachable");
   expect(within(dlg2).getByTestId("test-message")).toHaveTextContent("ECONNREFUSED");
+});
+
+test("a failed test's server message is shown as the text it is, not re-quoted as a JSON string", async () => {
+  const message = 'MCP HTTP 401: {"message":"User is not authorized to access this resource"}';
+  fakeApi({ conns: [conn({ offline: false, label: "Prod tenant" })], handlers: { "POST /api/connections/:id/test": (body, state, json) => json(424, { error: "mcp_http_error", message }) } });
+  const user = userEvent.setup();
+  render(<App />);
+  await pressLive(user);
+  await user.click(await screen.findByTestId("test-conn"));
+  const dlg = await screen.findByTestId("test-result");
+  await waitFor(() => expect(within(dlg).getByTestId("test-message")).toHaveTextContent(message));
+  expect(within(dlg).getByTestId("test-message").textContent).not.toContain('\\"'); // no escaped quotes
 });
 
 test("the default environment from worker.env is pre-filled in Setup and Add connection (typed values stay)", async () => {

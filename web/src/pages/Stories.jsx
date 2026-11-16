@@ -8,8 +8,8 @@ export default function Stories() {
     <>
       <h1>Stories</h1>
       <p className="lede">Two talk tracks. Pick a vertical to re-skin the wording. Both run in the mock demo: <a href="#/connections">add it on Connections</a>.</p>
-      <StoryPanel mode="tool-list" present={present} />
-      <StoryPanel mode="gate" present={present} />
+      <StoryPanel mode="tool-list" present={present} defaultOpen />
+      <StoryPanel mode="gate" present={present} defaultOpen />
     </>
   );
 }

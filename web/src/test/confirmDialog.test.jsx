@@ -12,6 +12,17 @@ import { setJsonView } from "../components/JsonPane.jsx";
 beforeEach(() => { setJsonView("raw"); }); // the Form | JSON choice is shared module state; these assertions read the JSON text
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+describe("JsonPane vendoring", () => {
+  it("JsonPane.jsx and JsonPane.css are byte for byte the shared files, matching their sha256 pins", () => {
+    const dir = path.join(process.cwd(), "src", "components");
+    for (const [f, pin] of [["JsonPane.jsx", "JsonPane.sha256"], ["JsonPane.css", "JsonPane.css.sha256"]]) {
+      const [h, name] = fs.readFileSync(path.join(dir, pin), "utf8").trim().split(/\s+/);
+      expect(name).toBe(f);
+      expect(createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex"), f).toBe(h);
+    }
+  });
+});
+
 describe("floating-dialog vendoring", () => {
   it("the vendored files are byte for byte the upstream files, matching floating-dialog.sha256, which names the commit", () => {
     const dir = path.join(process.cwd(), "src", "floating-dialog");
