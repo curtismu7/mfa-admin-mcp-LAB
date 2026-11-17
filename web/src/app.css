@@ -4,7 +4,7 @@
    app's (a known gap against the BEM rule); the new ones (top__, notice, flow-) follow it. */
 :root[data-present="1"] body { font-size: 17px; }
 
-.top, main, .foot { max-width: min(100%, 64rem); margin: 0 auto; }
+.top, main, .foot { max-width: min(100%, 2200px); margin: 0 auto; }
 main { padding: 8px 0 32px; outline: none; }
 .skip { position: absolute; left: -999px; top: 0; padding: 8px 16px; background: var(--surface); color: var(--text); border: 2px solid var(--accent); z-index: 50; }
 .skip:focus { left: 8px; top: 8px; }
