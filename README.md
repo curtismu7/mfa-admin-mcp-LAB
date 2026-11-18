@@ -2,7 +2,7 @@
 
 A standalone lab for **PingOne's MFA administration MCP tool set** — administer MFA and FIDO policies, notification policies, sender and delivery settings (email, phone, WhatsApp) and OATH tokens through an AI assistant, instead of console pages or hand-written API scripts. Connects to the hosted PingOne MCP server (the admin plane) or any HTTP MCP server, lists its tools with a safety class, and calls them. Read-only by default. Mock by default; Live is owner-run.
 
-Fork of [pingone-mcp-inspector-LAB](https://github.com/curtismu7/pingone-mcp-inspector-LAB): same inspector machinery (safety classes, confirm gate, scan, audit, Mock/Live toggle); the tool catalog, area grouping and story content are refocused on MFA administration.
+Fork of [pingone-mcp-inspector-LAB](https://github.com/curtismu7/pingone-mcp-inspector-LAB), which was retired 2026-11-18 and merged into this lab: its 14 general-admin tools and its two stories live here (S03, S04). Same inspector machinery (safety classes, confirm gate, scan, audit, Mock/Live toggle); the tool catalog, area grouping and story content cover MFA administration plus the general-admin tool set.
 
 Tier: Tester
 Repo: https://github.com/curtismu7/mfa-admin-mcp-LAB

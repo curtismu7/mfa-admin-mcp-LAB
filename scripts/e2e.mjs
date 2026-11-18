@@ -98,7 +98,7 @@ try {
   check((await page.getByTestId('banner').innerText()).includes('not a recording'), 'banner says the catalog is a sample, not a recording');
   check((await page.getByTestId('banner').innerText()).includes('Writes are off'), 'banner says writes are off');
   const viewerCount = await count();
-  check(viewerCount === 18, `mock.viewer sees 18 read tools (saw ${viewerCount})`);
+  check(viewerCount === 23, `mock.viewer sees 23 read tools (saw ${viewerCount})`);
   check((await page.getByTestId('health-card').innerText()).includes('missing admin roles'), 'health card carries the role hint');
   check((await page.getByTestId('identity').innerText()).includes('signed in as mock-viewer-user'), 'identity shows who signed in (no token value)');
   check(/\d+m \d\ds/.test(await page.getByTestId('expiry').innerText()), 'token expiry countdown is shown');
@@ -128,7 +128,7 @@ try {
   await signInAs('mock.admin');
   await page.waitForFunction(() => { const n = Number(document.querySelector('[data-testid="tool-count"]')?.textContent); return n > 8 && n !== 18; });
   const adminCount = await count();
-  check(adminCount === 33, `mock.admin sees 33 tools (saw ${adminCount})`);
+  check(adminCount === 47, `mock.admin sees 47 tools (saw ${adminCount})`);
   await page.getByRole('link', { name: 'Tools', exact: true }).click();
   await page.getByRole('heading', { name: /^Users/ }).waitFor();
   const badges = await page.getByTestId('class-badge').allInnerTexts();

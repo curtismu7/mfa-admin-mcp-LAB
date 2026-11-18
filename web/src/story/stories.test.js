@@ -4,7 +4,7 @@ import { fillAll, tokensIn } from "./fill.js";
 import { validateStory, validateVertical } from "./storySchema.js";
 
 test("both stories and the generic, airlines and banking packs are valid", () => {
-  expect(STORIES.map((s) => s.id)).toEqual(["S01", "S02"]);
+  expect(STORIES.map((s) => s.id)).toEqual(["S01", "S02", "S03", "S04"]);
   expect(VERTICALS.map((v) => v.id).sort()).toEqual(["airlines", "banking", "generic"]);
   for (const s of STORIES) expect(validateStory(s, { modes: ["tool-list", "gate"], stepRange: [1, 6] })).toEqual([]);
   for (const v of VERTICALS) expect(validateVertical(v)).toEqual([]);

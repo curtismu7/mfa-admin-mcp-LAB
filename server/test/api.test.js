@@ -87,12 +87,12 @@ test('test connection: returns the tools it counted (name and class, sorted) and
   assert.deepEqual(Object.keys(r.tools[0]).sort(), ['class', 'classSource', 'name'], 'only what the dialog shows');
   assert.equal(r.tools.find((t) => t.name === 'deleteUser').class, 'destructive');
 });
-test('tools list: classification and area grouping; the role comes from the signed-in mock account (viewer: the 18 read tools; admin: all 33); SSE mode', async () => {
+test('tools list: classification and area grouping; the role comes from the signed-in mock account (viewer: the 23 read tools; admin: all 47); SSE mode', async () => {
   const admin = await add(); const viewer = await add({ user: MOCK_LOGIN.viewer });
   const a = (await s.call('GET', `/api/connections/${admin.id}/tools`)).json;
   const v = (await s.call('GET', `/api/connections/${viewer.id}/tools`)).json;
-  assert.equal(v.count, 18); assert.equal(v.byClass.read, 18); assert.equal(v.byClass.write + v.byClass.destructive, 0);
-  assert.equal(a.count, 33); assert.equal(a.byClass.read, v.count, 'the viewer sees exactly the read tools the admin sees');
+  assert.equal(v.count, 23); assert.equal(v.byClass.read, 23); assert.equal(v.byClass.write + v.byClass.destructive, 0);
+  assert.equal(a.count, 47); assert.equal(a.byClass.read, v.count, 'the viewer sees exactly the read tools the admin sees');
   assert.ok(a.byClass.destructive >= 3 && a.byClass.write > 5);
   assert.ok(a.areas.user.includes('deleteUser') && a.areas.application.includes('listApplications'));
   assert.equal(a.tools.find((t) => t.name === 'syncTenantWidgets').class, 'write');
@@ -238,13 +238,13 @@ test('guards: bad Host refused, cross-origin and missing-origin writes refused, 
 test('the role is the signed-in account: signing out and in again as another mock account changes the list; the status carries an expiry but no token; the role route is gone', async () => {
   const c = await add({ user: MOCK_LOGIN.viewer });
   const n = async () => (await s.call('GET', `/api/connections/${c.id}/tools`)).json.count;
-  assert.equal(await n(), 18);
+  assert.equal(await n(), 23);
   const v = (await s.call('GET', '/api/connections')).json.connections.find((x) => x.id === c.id);
   assert.equal(v.auth_status.signedIn, true); assert.equal(v.auth_status.as, 'mock-viewer-user'); assert.ok(v.auth_status.expiresAt > Date.now());
   assert.ok(!/mock-(at|rt)-/.test(JSON.stringify(v)));
   await s.call('POST', `/api/connections/${c.id}/logout`, {});
   await signIn(s, c.id, MOCK_LOGIN.username);
-  assert.equal(await n(), 33);
+  assert.equal(await n(), 47);
   assert.equal((await s.call('POST', `/api/connections/${c.id}/role`, { role: 'admin' })).status, 404, 'there is no role switch: the role is whoever signed in');
 });
 
