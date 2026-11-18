@@ -217,6 +217,18 @@
       "title": "A write needs a second look",
       "say": "Nothing writes until someone has looked at exactly what it will write.",
       "file": "web/src/data/stories/S02-write-needs-second-look.json"
+    },
+    {
+      "id": "S03",
+      "title": "Why do I only see twelve tools?",
+      "say": "A short tool list is a roles question first, a server question last.",
+      "file": "web/src/data/stories/S03-inspector-short-tool-list.json"
+    },
+    {
+      "id": "S04",
+      "title": "A write needs a second look",
+      "say": "Nothing writes until someone has looked at exactly what it will write.",
+      "file": "web/src/data/stories/S04-inspector-write-needs-second-look.json"
     }
   ]
 }
