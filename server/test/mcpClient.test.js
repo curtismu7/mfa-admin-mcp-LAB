@@ -22,10 +22,10 @@ test('JSON and a single SSE frame both parse', async () => {
   mock.config.sse = false;
   assert.ok(a.length > 10); assert.deepEqual(a, b);
 });
-test('role-gated lists: the signed-in mock.viewer sees the 18 read tools only, mock.admin sees all 33', async () => {
+test('role-gated lists: the signed-in mock.viewer sees the 23 read tools only, mock.admin sees all 47', async () => {
   const get = async (user) => { const t = await tok(user); return createMcpClient({ url: `${mock.base}/mcp/e`, getAuth: async () => ['Authorization', `Bearer ${t}`] }).listTools(); };
   const v = await get(MOCK_LOGIN.viewer); const a = await get(MOCK_LOGIN.username);
-  assert.equal(v.length, 18); assert.equal(a.length, 33);
+  assert.equal(v.length, 23); assert.equal(a.length, 47);
   assert.ok(v.every((t) => /^(list|get|search|describe)/.test(t.name)));
   assert.ok(a.some((t) => t.name === 'deleteUser') && !v.some((t) => t.name === 'deleteUser'));
 });

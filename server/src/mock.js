@@ -56,6 +56,21 @@ const GENERAL_CATALOG = [
   { name: 'deleteUser', description: 'Delete a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), annotations: { destructiveHint: true }, role: 'admin' },
   { name: 'purgeUserData', description: 'Purge user data.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
   { name: 'syncTenantWidgets', description: 'Re-syncs tenant widgets. A deliberately unusual verb, to show how a tool with no recognised read/write verb is classified and gated.', inputSchema: obj({ ...ENV }), role: 'admin' },
+  // Ported from pingone-mcp-inspector-LAB (retired 2026-11-18): the general-admin tools its users had.
+  { name: 'getApplication', description: 'Get one application.', inputSchema: obj({ ...ENV, applicationId: S }, ['environmentId', 'applicationId']), annotations: { readOnlyHint: true }, role: 'viewer' },
+  { name: 'listPopulations', description: 'List populations.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'viewer' },
+  { name: 'searchUsers', description: 'Search users by attribute.', inputSchema: obj({ ...ENV, query: S }, ['environmentId']), role: 'viewer' },
+  { name: 'listDaVinciFlows', description: 'List DaVinci flows.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'viewer' },
+  { name: 'describeEnvironment', description: 'Describe the environment configuration.', inputSchema: obj({ ...ENV }, ['environmentId']), role: 'viewer' },
+  { name: 'createApplication', description: 'Create an application.', inputSchema: obj({ ...ENV, name: S, type: S }, ['environmentId', 'name']), annotations: { readOnlyHint: false, destructiveHint: false }, role: 'admin' },
+  { name: 'updateApplication', description: 'Update an application.', inputSchema: obj({ ...ENV, applicationId: S, name: S }, ['environmentId', 'applicationId']), role: 'admin' },
+  { name: 'updateUser', description: 'Update a user.', inputSchema: obj({ ...ENV, userId: S, email: S }, ['environmentId', 'userId']), role: 'admin' },
+  { name: 'enableUser', description: 'Enable a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
+  { name: 'disableUser', description: 'Disable a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
+  { name: 'resetUserPassword', description: 'Start the reset flow for a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
+  { name: 'unlockUser', description: 'Unlock a user.', inputSchema: obj({ ...ENV, userId: S }, ['environmentId', 'userId']), role: 'admin' },
+  { name: 'assignUserToGroup', description: 'Add a user to a group.', inputSchema: obj({ ...ENV, userId: S, groupId: S }, ['environmentId', 'userId', 'groupId']), role: 'admin' },
+  { name: 'deleteApplication', description: 'Delete an application.', inputSchema: obj({ ...ENV, applicationId: S }, ['environmentId', 'applicationId']), role: 'admin' },
 ];
 
 const CATALOG = [...MFA_CATALOG, ...GENERAL_CATALOG];
