@@ -44,7 +44,7 @@ export default function Setup({ onCreated, say, defaults }) {
 
   return (
     <form className="card" onSubmit={check ? apply : checkEnv} aria-labelledby="setup-h" data-testid="setup">
-      <h2 id="setup-h">Set up hosted PingOne MCP (automatic)</h2>
+      <h2 id="setup-h"><span className="step-num" data-n="3" aria-hidden="true"></span>Set up hosted PingOne MCP (automatic)</h2>
       <p>The lab configures your tenant for you: it signs in through the environment's <strong>PingOne MCP Server</strong> application when that is a public sign-in app, and changes nothing on it. Otherwise it finds or creates its own public native sign-in application. Either way the sign-in is PingOne's native flow (pi.flow, authorization code + PKCE, no client secret). Then it saves the connection. All you add afterwards is your admin sign-in: username, password and the code PingOne sends you.</p>
       <p className="hint" data-testid="setup-worker-scope">Setup uses a <strong>Management worker application</strong> (client_credentials) whose identity can read and update applications — e.g. an Environment Admin role. It calls the PingOne <strong>Management API only</strong>, to create the sign-in application; it is never used to call the MCP server, which takes your admin sign-in. If the lab's <code>~/.config/mfa-admin-mcp/worker.env</code> exists (PINGONE_CLIENT_ID, PINGONE_CLIENT_SECRET), it is used automatically and nothing is pasted. Otherwise paste the client id and secret below: used for one token mint, never stored; only this lab's server sees them.</p>
       <div className="grid2">

@@ -36,7 +36,7 @@ function Wizard({ onCreated, say, defaults }) {
   }
   return (
     <form className="card" onSubmit={submit} aria-labelledby="wiz-h">
-      <h2 id="wiz-h">Add a connection</h2>
+      <h2 id="wiz-h"><span className="step-num" data-n="4" aria-hidden="true"></span>Add a connection</h2>
       <Field label="Type">
         <select value={f.kind} onChange={set("kind")}>
           <option value="pingone">PingOne hosted MCP (your tenant)</option>
@@ -192,7 +192,7 @@ export default function Connections({ defaults, mode, conns, activeId, onSelect,
       <p className="lede">A connection says which MCP server to talk to and how to authenticate. Secrets are write-only: after saving they show as <q>set</q>. Writes are off for every new connection. The header toggle decides which connections are shown: Mock shows the mock demo, Live shows real servers.</p>
       {mode === "mock" && (
         <section className="card" aria-labelledby="demo-h">
-          <h2 id="demo-h">Try the mock</h2>
+          <h2 id="demo-h"><span className="step-num" data-n="1" aria-hidden="true"></span>Try the mock</h2>
           <p>The mock demo talks to an in-process mock of PingOne's hosted MCP server and authorization server on this machine. The tool catalog is an illustrative sample, not a recording, and its write tools change only an in-memory fake tenant.</p>
           <p data-testid="demo-accounts">You sign in to it the way an administrator signs in to the real one, and the tools you see follow the account's roles: <code>mock.admin</code> sees every tool, <code>mock.viewer</code> only the read tools.</p>
           <div className="row wrap">
@@ -203,7 +203,7 @@ export default function Connections({ defaults, mode, conns, activeId, onSelect,
       )}
       {mode === "live" && (
         <section className="card" aria-labelledby="presets-h">
-          <h2 id="presets-h">Working demos</h2>
+          <h2 id="presets-h"><span className="step-num" data-n="2" aria-hidden="true"></span>Working demos</h2>
           <p>Banking and OpenSearch are local MCP servers on this machine. The lab checks whether each one is running: connect with one click, or copy the command that starts it (the lab runs in its own container and cannot start them itself). For your PingOne tenant use Setup below: it creates the sign-in application, and you sign in as yourself. You can still add your own connections below.</p>
           {presets === null
             ? <p className="hint" role="status">Checking which demo servers are running…</p>

@@ -36,6 +36,10 @@ a { color: var(--focus); }
 
 h1 { font-size: 22px; margin: 16px 0 8px; }
 h2 { font-size: 17px; margin: 0 0 8px; }
+.step-num { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 999px;
+  background: var(--accent-gradient); color: var(--on-accent); font: 700 11px var(--font-mono);
+  margin-right: 8px; vertical-align: 2px; }
+.step-num::before { content: attr(data-n); }
 h3 { font-size: 15px; margin: 0; }
 h4 { font-size: 13px; margin: 8px 0 4px; color: var(--muted); }
 .lede { color: var(--text-body); max-width: 70ch; }
