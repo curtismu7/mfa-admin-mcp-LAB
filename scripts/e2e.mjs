@@ -147,6 +147,8 @@ try {
   await page.getByRole('button', { name: 'Form' }).click();
   await page.getByRole('button', { name: 'Call', exact: true }).click();
   await page.getByTestId('call-view').waitFor();
+  // The hybrid pane collapses a nested object into one section line; open the response's `result` section so its rows are visible (the old pane expanded everything).
+  await page.getByTestId('call-response').locator('.jsec__head').first().click();
   const read = await page.getByTestId('call-view').innerText();
   check(read.includes('sample.user') && read.includes('tools/call') && !read.includes('"method"'), 'read call ran directly; request and response shown as a Form (the default view)');
   await page.getByTestId('call-view').getByRole('button', { name: 'JSON', exact: true }).first().click();
