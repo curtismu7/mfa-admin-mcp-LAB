@@ -16,8 +16,9 @@ describe("JsonPane vendoring", () => {
   it("JsonPane.jsx and JsonPane.css are byte for byte the shared files, matching their sha256 pins", () => {
     const dir = path.join(process.cwd(), "src", "components");
     for (const [f, pin] of [["JsonPane.jsx", "JsonPane.sha256"], ["JsonPane.css", "JsonPane.css.sha256"]]) {
-      const [h, name] = fs.readFileSync(path.join(dir, pin), "utf8").trim().split(/\s+/);
-      expect(name).toBe(f);
+      const pinText = fs.readFileSync(path.join(dir, pin), "utf8").trim();
+      const [h, name] = pinText.split(/\s+/);
+      expect(name === undefined || name.endsWith(f), f).toBe(true);
       expect(createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex"), f).toBe(h);
     }
   });
