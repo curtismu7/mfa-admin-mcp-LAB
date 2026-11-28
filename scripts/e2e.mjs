@@ -47,7 +47,10 @@ const browser = await chromium.launch({ executablePath: process.env.E2E_CHROMIUM
 let page = null;
 const external = []; const bodies = []; const errors = [];
 try {
+  // The Real-or-mock modal covers a fresh session (and holds focus), so this context starts with it dismissed for both modes; a second, fresh context below tests the modal itself.
+  const predismiss = (c) => c.addInitScript(() => { try { sessionStorage.setItem('mfaadm-mode-seen-mock', '1'); sessionStorage.setItem('mfaadm-mode-seen-real', '1'); } catch { /* blocked */ } });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
+  await predismiss(ctx);
   page = await ctx.newPage();
   const shot = (name) => page.screenshot({ path: path.join(shots, `${name}.png`), fullPage: true });
   page.on('request', (r) => { const u = new URL(r.url()); if (!/^(localhost|127\.0\.0\.1)$/.test(u.hostname) && !/^(data|blob):/.test(r.url())) external.push(r.url()); });
@@ -68,10 +71,10 @@ try {
   // Rule 19 default: Real if configured, else Mock. This server has the owner's Live opt-in, so the page opens in Live; switch to Mock.
   // The shared TopMenu renders the mode as a <select> (option "mock"), not a button.
   await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor({ timeout: 60_000 });
-  check((await page.getByTestId('banner').innerText()).startsWith('LIVE mode'), 'with the Live opt-in the page opens in Live (rule 19 default) and the banner says so');
+  check((await page.getByTestId('in-use').count()) === 1 && (await page.getByTestId('banner').count()) === 0, 'with the Live opt-in the page opens in Live (rule 19 default), says which connection is in use, and has no banner');
   await page.getByTestId('mode-select').selectOption('mock');
   await page.getByTestId('mode').filter({ hasText: 'Mode: mock' }).waitFor();
-  check((await page.getByTestId('banner').innerText()).startsWith('MOCK mode, simulated'), 'with no connection the banner says Mock mode');
+  check((await page.getByTestId('banner').count()) === 0 && (await page.getByTestId('in-use').count()) === 0, 'in Mock there is no banner and no Live "in use" line');
   check((await page.getByTestId('mode').innerText()) === 'Mode: mock', 'the mode chip says Mode: mock');
 
   // A sign-in through the page's own dialog (pi.flow against the mock AS): the password and the code are filled in for the mock.
@@ -95,8 +98,7 @@ try {
   await page.getByTestId('login-cancel').click();
   await signInAs('mock.viewer');
   await page.getByTestId('tool-count').waitFor();
-  check((await page.getByTestId('banner').innerText()).includes('not a recording'), 'banner says the catalog is a sample, not a recording');
-  check((await page.getByTestId('banner').innerText()).includes('Writes are off'), 'banner says writes are off');
+  check((await page.getByTestId('writes-state').innerText()).includes('Writes are off'), 'the page says writes are off');
   const viewerCount = await count();
   check(viewerCount === 23, `mock.viewer sees 23 read tools (saw ${viewerCount})`);
   check((await page.getByTestId('health-card').innerText()).includes('missing admin roles'), 'health card carries the role hint');
@@ -107,7 +109,7 @@ try {
   // the header toggle exists on every page and Live is allowed on this server
   for (const p of ['connections', 'tools', 'raw', 'audit', 'mcp-first', 'stories', 'diagram']) {
     await go(p);
-    check(await page.getByTestId('mode-select').count() === 1 && await page.getByTestId('mode-real').count() === 1 && (await page.getByTestId('banner').innerText()).startsWith('MOCK mode'), `the Mock / Real toggle, the mode and the banner are on /${p}`);
+    check(await page.getByTestId('mode-select').count() === 1 && await page.getByTestId('mode-real').count() === 1 && (await page.getByTestId('writes-state').count()) === 1 && (await page.getByTestId('banner').count()) === 0, `the Mock / Real toggle and the writes state are on /${p}, and there is no banner`);
   }
   await go('connections');
 
@@ -215,7 +217,7 @@ try {
   // The toggle POSTs /api/mode and then reloads the data, so wait for the switch to land before checking it.
   await page.getByTestId('mode').filter({ hasText: 'Mode: live' }).waitFor({ timeout: 10_000 }).catch(() => {});
   await page.locator('[data-testid="conn-card"]', { hasText: 'Mock demo' }).first().waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {});
-  check((await page.getByTestId('mode').innerText()) === 'Mode: live' && (await page.getByTestId('banner').innerText()).startsWith('LIVE mode'), 'pressing Live (allowed here) shows Mode: live and the LIVE banner');
+  check((await page.getByTestId('mode').innerText()) === 'Mode: live' && (await page.getByTestId('in-use').count()) === 1, 'pressing Live (allowed here) shows Mode: live and the connection in use');
   check(await page.locator('[data-testid="conn-card"]', { hasText: 'Mock demo' }).count() === 0, 'in Live the mock demo is not listed');
   const useIt = async (card) => { const b = card.getByRole('button', { name: 'Use this connection' }); if (await b.count()) await b.click(); }; // the first connection of a mode is already in use
   await useIt(page.locator('[data-testid="conn-card"]', { hasText: 'hostile stub' }));
@@ -316,7 +318,7 @@ try {
   check(await page.locator('[data-testid="conn-card"]').count() >= 1, 'Reset kept the saved connections');
 
   // a second server bound non-loopback: the Live (Real) button is disabled with the reason, and the page stays in Mock
-  const refusedPage = await ctx.newPage();
+  const refusedPage = await ctx.newPage(); // same context: already pre-dismissed
   const refusedBase = `http://localhost:${refusedPort}`;
   await refusedPage.goto(`${refusedBase}/#/connections`);
   await refusedPage.waitForFunction(() => document.querySelector('[data-testid="mode-real"]')?.title?.length > 0);
@@ -330,6 +332,29 @@ try {
   const liveTry = await fetch(`${refusedBase}/api/connections`, { method: 'POST', headers: { 'content-type': 'application/json', origin: refusedBase }, body: JSON.stringify({ kind: 'custom', url: 'http://127.0.0.1:9/mcp' }) });
   check(refusedInfo.live.available === false && liveTry.status === 403, 'the API agrees: /api/info says Live is unavailable and a Live connection is refused (403)');
   await refusedPage.close();
+
+  // the Real-or-mock modal, in a fresh session (nothing dismissed): REAL when the server is in Live, closes on Got it, no return on a reload, MOCK after a switch; no banner anywhere
+  {
+    const postMode = (source) => fetch(`${base}/api/mode`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ source }) });
+    const before = (await (await fetch(`${base}/api/info`)).json()).source;
+    await postMode('real');
+    const mctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
+    const mpage = await mctx.newPage();
+    await mpage.goto(`${base}/#/connections`);
+    await mpage.locator('[data-testid="mode-modal"][data-mode="real"]').waitFor({ timeout: 60_000 });
+    const modal = mpage.getByTestId('mode-modal');
+    check((await modal.innerText()).includes('REAL') && (await modal.innerText()).includes('UNVERIFIED against a real tenant') && (await mpage.getByTestId('banner').count()) === 0, 'a fresh session opens on the REAL modal (Live server) and has no banner');
+    check(await mpage.evaluate(() => { const r = document.querySelector('[data-testid="mode-modal"]').getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - innerWidth / 2) < 2 && r.left >= 0 && r.right <= innerWidth; }), 'the modal is centred and fits the 1280px viewport');
+    await mpage.getByTestId('mode-modal-ok').click();
+    check((await mpage.getByTestId('mode-modal').count()) === 0, 'Got it closes the modal');
+    await mpage.reload(); await mpage.getByTestId('mode').waitFor();
+    check((await mpage.getByTestId('mode-modal').count()) === 0, 'a reload in the same session does not show the modal again');
+    await mpage.getByTestId('mode-select').selectOption('mock');
+    await mpage.locator('[data-testid="mode-modal"][data-mode="mock"]').waitFor({ timeout: 10_000 });
+    check((await mpage.getByTestId('mode-modal').innerText()).includes('not a recording') && (await mpage.getByTestId('mode-modal').innerText()).includes('Nothing leaves this machine'), 'switching to Mock shows the MOCK modal, saying the catalog is a sample and nothing leaves the machine');
+    await mctx.close();
+    await postMode(before === 'real' ? 'real' : 'mock');
+  }
 
   // a11y (axe) on each page, light then dark
   for (const p of ['connections', 'tools', 'audit', 'raw', 'mcp-first', 'stories', 'diagram']) {
