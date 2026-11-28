@@ -31,7 +31,7 @@ The same picture is the app's Diagram page (ReactFlow: movable boxes, Simulate, 
 
 ## Web (`web/src`)
 
-The header holds the Mock / Live toggle (the page always opens in Mock and remembers no mode; `GET /api/info` says whether Live is allowed), the `Mode:` chip, Reset, Present and the theme picker, with the mode banner above them on every page. The toggle decides which saved connections a page works with: the mock demo in Mock, real servers in Live. Pages: Connections (wizard, mock demo), Tools (health card, scan panel, grouped list), Tool (form from the input schema, confirm dialog), Raw JSON-RPC, Audit, MCP first, Stories (two: S01 short tool list, S02 a write needs a second look, with vertical packs), Diagram. Presenter mode toggles with `p`.
+The header holds the Mock / Live toggle (the page always opens in Mock and remembers no mode; `GET /api/info` says whether Live is allowed), the `Mode:` chip, Reset, Present and the theme picker, with a MOCK or REAL modal opening the page and the writes state under the header. The toggle decides which saved connections a page works with: the mock demo in Mock, real servers in Live. Pages: Connections (wizard, mock demo), Tools (health card, scan panel, grouped list), Tool (form from the input schema, confirm dialog), Raw JSON-RPC, Audit, MCP first, Stories (two: S01 short tool list, S02 a write needs a second look, with vertical packs), Diagram. Presenter mode toggles with `p`.
 
 ## Mock mode
 

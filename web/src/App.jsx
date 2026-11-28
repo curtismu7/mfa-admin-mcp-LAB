@@ -3,7 +3,8 @@ import fs from "node:fs";
 // Opened from Customer Agent LAB (UC-LEARN2 routes here): strip + header Back only, nothing preselected.
 import ReturnLink from "./return-link/ReturnLink.jsx";
 import * as api from "./api.js";
-import Banner from "./components/Banner.jsx";
+import WritesState from "./components/WritesState.jsx";
+import ModeModal from "./mode-modal/ModeModal.jsx";
 import VerifyMark from "./components/VerifyMark.jsx";
 import TestResultModal from "./components/TestResultModal.jsx";
 import Audit from "./pages/Audit.jsx";
@@ -22,6 +23,11 @@ import { pageTalkSteps } from "./story/StoryPanel";
 
 const VERSION = (() => { try { return JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version || null; } catch { return null; } })();
 
+// The Real-or-mock modal's lines (it replaced the long banner): what is simulated, what Live touches, and the one claim that is UNVERIFIED. Writes on or off, and the connection in use, stay on the page (WritesState).
+export const MODE_LINES = {
+  mock: "SIMULATED: an in-process mock of PingOne's hosted MCP server and authorization server answers on this machine. The tool catalog is an illustrative sample, not a recording; write tools change only an in-memory fake tenant. Nothing leaves this machine.",
+  real: "LIVE, owner-run: calls go to the real server of the connection you use, with the credentials you saved, and act on it. UNVERIFIED against a real tenant: whether the hosted PingOne server accepts a token from this lab's own sign-in application (docs/live-checks.md).",
+};
 const NAV = [["connections", "Connections"], ["tools", "Tools"], ["raw", "Raw JSON-RPC"], ["audit", "Audit"], ["mcp-first", "MCP first"], ["stories", "Stories"], ["diagram", "Diagram"]];
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -150,7 +156,7 @@ function Shell() {
     <>
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
       <header className="top">
-        <Banner mode={mode} conn={active} />
+        <WritesState mode={mode} conn={active} />
         <ReturnLink app="mfa-admin-mcp" />
         <div className="top__bar">
           <h1 className="top__title">MFA Admin MCP LAB</h1>
@@ -182,6 +188,7 @@ function Shell() {
       <p className="visually-hidden" role="status" aria-live="polite" data-testid="live">{msg}</p>
       <footer className="foot">No accounts here: this app runs on your machine and holds your connections. UNVERIFIED claims are marked as such; see docs/references.md and docs/live-checks.md.</footer>
       <TalkTrackDialog isOpen={talkOpen} onClose={() => setTalkOpen(false)} talk={pageTalkSteps()} />
+      <ModeModal mode={mode === "live" ? "real" : "mock"} lines={MODE_LINES} storageKey="mfaadm-mode" />
 
     </>
   );

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-const WEB_JSX = ['App.jsx', 'components/Banner.jsx', 'components/CallView.jsx', 'components/ConfirmDialog.jsx', 'components/HealthCard.jsx', 'components/ScanPanel.jsx', 'pages/Audit.jsx', 'pages/Connections.jsx', 'pages/Diagram.jsx', 'pages/McpFirst.jsx', 'pages/Raw.jsx', 'pages/Stories.jsx', 'pages/Tool.jsx', 'pages/Tools.jsx', 'present/Present.jsx', 'story/StoryPanel.jsx'];
+const WEB_JSX = ['App.jsx', 'components/WritesState.jsx', 'components/CallView.jsx', 'components/ConfirmDialog.jsx', 'components/HealthCard.jsx', 'components/ScanPanel.jsx', 'pages/Audit.jsx', 'pages/Connections.jsx', 'pages/Diagram.jsx', 'pages/McpFirst.jsx', 'pages/Raw.jsx', 'pages/Stories.jsx', 'pages/Tool.jsx', 'pages/Tools.jsx', 'present/Present.jsx', 'story/StoryPanel.jsx'];
 const SKIP = new Set(['node_modules', 'dist', '.git', 'package-lock.json', '.data']);
 const walk = (dir, fn) => {
   for (const name of fs.readdirSync(dir)) {

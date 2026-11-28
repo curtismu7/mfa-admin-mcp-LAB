@@ -8,7 +8,7 @@ Tier: Tester
 Repo: https://github.com/curtismu7/mfa-admin-mcp-LAB
 Catalog: D132
 
-> **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is gated by the loopback-bind guard only** (no env opt-in), and the banner on every tab, presenter mode included, names the mode. The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
+> **Nothing here has been run against a real PingOne tenant.** Everything below was run against in-process stubs only: a mock of PingOne's authorization server and hosted MCP server, and a stub poisoned server. The header has a **Mock / Live** toggle and shows the mode; **Live is gated by the loopback-bind guard only** (no env opt-in), and the page opens on a MOCK or REAL modal (the mode chip names the mode on every tab, presenter mode included). The owner-run checklist for a real tenant is [docs/live-checks.md](docs/live-checks.md).
 
 ## What is simulated
 
@@ -83,12 +83,12 @@ Other ports this app uses (dev only): the Vite dev server on 5202 (`VITE_PORT`),
 
 ## Mock and live modes
 
-- The header has a **Mock / Live** toggle on every page (Connections, Tools, Raw JSON-RPC, Audit, MCP first, Stories, Diagram). It shows the mode as `Mode: mock` or `Mode: live`, and the banner above it says the same ("MOCK mode, simulated." or "LIVE mode, owner-run."). Nothing about the mode is remembered: every load, reload and new tab opens in Mock, and Live is entered by pressing the toggle (when the server allows it).
+- The header has a **Mock / Live** toggle on every page (Connections, Tools, Raw JSON-RPC, Audit, MCP first, Stories, Diagram). It shows the mode as `Mode: mock` or `Mode: live`, and the page opens on a **MOCK** or **REAL** modal that says the same (once per mode per browser session; Got it closes it). Writes on or off, and in Live the connection in use, stay on the page under the header. Nothing about the mode is remembered: every load, reload and new tab opens in Mock, and Live is entered by pressing the toggle (when the server allows it).
 - **Mock** shows the mock demo connections. Everything in this README runs in Mock.
 - **Live** shows the saved real-server connections, the one-click presets and the "Add a connection" form. Pressing Live when it is refused changes nothing and sends no request: the page shows which guard failed and stays in Mock. Live is allowed only when every guard passes: the server is bound to loopback (no env opt-in; owner decision 2026-11-13). A non-loopback bind (`MFAADM_BIND`) passes the guard only inside the container image, which also sets `MFAADM_CONTAINER=1` (it is published on `127.0.0.1` only); on a host run, `MFAADM_BIND=0.0.0.0` with Live is refused as `loopback-bind`. `GET /api/info` lists the failing guards.
 - A saved Live connection is refused with 403 `live_refused` on every network route while Live is refused, even if it is already in the file. Deleting it, locking its writes and signing out stay available.
 - Live connection rules: the server URL must be https (http only on loopback), carry no credentials and not be a literal private, link-local, shared (100.64.0.0/10) or benchmark (198.18.0.0/15) address, including the same IPv4 address written as an IPv6 literal (`[::ffff:10.0.0.1]`, NAT64 `[64:ff9b::a00:1]`, 6to4); a PingOne region must be `com`, `eu`, `asia` or `ca` unless you opt in to another suffix. Redirects are not followed and replies are size and time capped. Writes are off for every new connection; a write needs the confirm gate (exact arguments and their hash), and a destructive call needs the tool name typed.
-- **Presenter mode** (press `P`, or the Present button; `Esc` leaves it). It enlarges the text and shows a presenter bar. The toggle, the mode chip and the banner stay.
+- **Presenter mode** (press `P`, or the Present button; `Esc` leaves it). It enlarges the text and shows a presenter bar. The toggle, the mode chip and the writes state stay.
 - **Reset** (header "Reset session") calls `POST /api/reset` and puts the page back to its start, including the diagram boxes.
 - The theme picker (Auto / Light / Dark) only sets `data-theme`; the shared stylesheet does the rest.
 
