@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import App from "./App.jsx";
+import App, { MODE_LINES } from "./App.jsx";
 import { setJsonView } from "./components/JsonPane.jsx";
 import { conn, ENV, fakeApi, LIVE_REFUSED, PRESETS, TOOLS } from "./test-helpers.js";
 
@@ -10,36 +10,73 @@ beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catc
 const pressLive = async (user) => { await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); await user.selectOptions(screen.getByTestId("mode-select"), "real"); };
 const live = () => { try { localStorage.setItem("mfaadm.mode", "live"); } catch { /* none */ } };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+// The Real-or-mock modal is itself a role="dialog": tests that query the confirm dialog close it first.
+const dismissModal = () => { const ok = screen.queryByTestId("mode-modal-ok"); if (ok) fireEvent.click(ok); };
 const go = (h) => { window.location.hash = h; window.dispatchEvent(new HashChangeEvent("hashchange")); };
 
-test("skip link, nav, banner states: Live names the real server, writes enabled is a red alert", async () => {
+test("skip link, nav, Live and writes states: the Live modal says REAL and UNVERIFIED, the page names the connection in use, writes enabled is a red alert", async () => {
   fakeApi({ conns: [conn({ offline: false, label: "Prod tenant", allowWrites: true })] });
   render(<App />);
   await pressLive(userEvent.setup());
   expect(screen.getByText("Skip to content")).toHaveAttribute("href", "#main");
-  const banner = await screen.findByTestId("banner");
-  await waitFor(() => expect(within(banner).getByText(/^LIVE mode, owner-run/)).toBeInTheDocument());
-  expect(banner).toHaveTextContent(/In use: Prod tenant/);
-  expect(within(banner).getByRole("alert")).toHaveTextContent(/WRITES ARE ENABLED/);
+  const modal = await screen.findByTestId("mode-modal");
+  await waitFor(() => expect(modal).toHaveAttribute("data-mode", "real"));
+  expect(modal).toHaveTextContent("REAL");
+  expect(modal).toHaveTextContent(MODE_LINES.real);
+  expect(modal).toHaveTextContent(/UNVERIFIED against a real tenant/);
+  const state = await screen.findByTestId("writes-state");
+  expect(state).toHaveTextContent(/In use: Prod tenant/);
+  expect(within(state).getByRole("alert")).toHaveTextContent(/WRITES ARE ENABLED/);
   expect(screen.getByTestId("mode")).toHaveTextContent("Mode: live");
+  expect(screen.queryByTestId("banner")).toBeNull();
 });
 
-test("Mock is the default: the banner and the mode chip say Mock, and the banner says what is simulated", async () => {
+test("Live with no connection selected says so on the page, not only in the modal", async () => {
+  fakeApi({ conns: [conn()] });
+  render(<App />);
+  await pressLive(userEvent.setup());
+  expect(await screen.findByTestId("in-use")).toHaveTextContent(/No Live connection is selected yet: add one on Connections/);
+});
+
+test("Mock is the default: the page opens on a MOCK modal that says what is simulated, closes on Got it, stays closed after a reload, and the old banner is gone", async () => {
+  fakeApi();
+  const first = render(<App />);
+  const modal = await screen.findByTestId("mode-modal");
+  expect(modal).toHaveAttribute("data-mode", "mock");
+  expect(modal).toHaveTextContent("MOCK");
+  expect(modal).toHaveTextContent(MODE_LINES.mock);
+  expect(modal).toHaveTextContent(/not a recording/);
+  expect(modal).toHaveTextContent(/Nothing leaves this machine/);
+  expect(screen.queryByTestId("banner")).toBeNull();
+  expect(document.querySelector(".banner")).toBeNull();
+  const state = await screen.findByTestId("writes-state");
+  expect(state).toHaveTextContent(/Writes are off/);
+  expect(within(state).queryByRole("alert")).toBeNull();
+  fireEvent.click(screen.getByTestId("mode-modal-ok"));
+  expect(screen.queryByTestId("mode-modal")).toBeNull();
+  first.unmount();
   fakeApi();
   render(<App />);
-  const banner = await screen.findByTestId("banner");
-  expect(banner).toHaveTextContent(/^MOCK mode, simulated/);
-  expect(banner).toHaveTextContent(/not a recording/);
-  expect(banner).toHaveTextContent(/Nothing leaves this machine/);
-  expect(banner).toHaveTextContent(/Writes are off/);
-  expect(within(banner).queryByRole("alert")).toBeNull();
+  await screen.findByTestId("writes-state");
+  expect(screen.queryByTestId("mode-modal")).toBeNull();
   expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
   expect(screen.getByTestId("mode-select")).toHaveValue("mock");
   expect(screen.getByTestId("mode-select")).toHaveValue("mock");
-  expect(banner.querySelector(".banner")).toHaveAttribute("data-state", "mock");
 });
 
-test("the Mock / Live toggle is in the header of every page, and the banner and chip follow it", async () => {
+test("a Live server shows MOCK until /api/info answers, then REAL; the first mode must not block the second", async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  fakeApi({ conns: [conn()], handlers: { "GET /api/info": async (_b, _s, json) => { await held; return json(200, { mode: "live", source: "real", modes: ["mock", "live"], realAvailable: true, realReason: null, live: { available: true } }); } } });
+  render(<App />);
+  expect((await screen.findByTestId("mode-modal")).dataset.mode).toBe("mock");
+  release();
+  await waitFor(() => expect(screen.getByTestId("mode-modal").dataset.mode).toBe("real"));
+  expect(screen.getByTestId("mode-modal")).toHaveTextContent("REAL");
+  expect(screen.getByTestId("mode")).toHaveTextContent("Mode: live");
+});
+
+test("the Mock / Live toggle is in the header of every page, and the modal and chip follow it", async () => {
   fakeApi({ conns: [conn(), conn({ id: "c9", offline: false, label: "A real server", kind: "custom", url: "http://127.0.0.1:9/mcp" })] });
   const user = userEvent.setup();
   render(<App />);
@@ -48,14 +85,15 @@ test("the Mock / Live toggle is in the header of every page, and the banner and 
     expect(await screen.findByTestId("mode-select")).toBeInTheDocument();
     expect(screen.getByTestId("mode-select")).toBeInTheDocument();
     expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
-    expect(screen.getByTestId("banner")).toHaveTextContent(/^MOCK mode/);
+    expect(screen.getByTestId("mode-modal")).toHaveAttribute("data-mode", "mock");
+    expect(screen.queryByTestId("banner")).toBeNull();
   }
   go("#/connections");
   await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false));
   await user.selectOptions(screen.getByTestId("mode-select"), "real");
   expect(screen.getByTestId("mode")).toHaveTextContent("Mode: live");
-  expect(screen.getByTestId("banner")).toHaveTextContent(/^LIVE mode/);
-  expect(screen.getByTestId("banner").querySelector(".banner")).toHaveAttribute("data-state", "live");
+  await waitFor(() => expect(screen.getByTestId("mode-modal")).toHaveAttribute("data-mode", "real"));
+  expect(screen.getByTestId("mode-modal")).toHaveTextContent(/^REAL/);
   for (const page of ["tools", "raw", "audit", "diagram"]) {
     go(`#/${page}`);
     await screen.findByTestId("mode-select");
@@ -75,10 +113,10 @@ test("the page always opens in Mock: after pressing Live, a reload is in Mock ag
   live(); // what an older build left behind in the browser
   fakeApi({ conns: [conn()] });
   render(<App />);
-  await screen.findByTestId("banner");
+  await screen.findByTestId("writes-state");
   await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); // /api/info has answered: Live is allowed
   expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
-  expect(screen.getByTestId("banner")).toHaveTextContent(/^MOCK mode/);
+  expect(screen.getByTestId("mode-modal")).toHaveAttribute("data-mode", "mock");
 });
 
 test("the toggle decides which connections are shown: the mock demo in Mock, the real servers in Live", async () => {
@@ -104,7 +142,7 @@ test("Working demos: a running server offers Connect, then Use once connected; a
     presets: [{ ...PRESETS[0] }, { ...PRESETS[1] }, { id: "x", name: "Third MCP", folder: "x-LAB", command: "docker compose up -d", url: "http://localhost:9911/mcp", running: true }] });
   const user = userEvent.setup();
   render(<App />);
-  await screen.findByTestId("banner");
+  await screen.findByTestId("writes-state");
   expect(api.calls.some((c) => c.url === "/api/presets")).toBe(false); // Mock: no status check
   await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false));
   await user.selectOptions(screen.getByTestId("mode-select"), "real");
@@ -128,12 +166,12 @@ test("Live is refused when the server says a guard fails: the page stays in Mock
   const api = fakeApi({ live: LIVE_REFUSED });
   const user = userEvent.setup();
   render(<App />);
-  await screen.findByTestId("banner");
+  await screen.findByTestId("writes-state");
   await waitFor(() => expect(api.calls.some((c) => c.url === "/api/info")).toBe(true));
   expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(true); // Real is unavailable: the option is off
   expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').getAttribute("title")).toMatch(/loopback-bind/); // with the how-to tooltip
   expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
-  expect(screen.getByTestId("banner")).toHaveTextContent(/^MOCK mode/);
+  expect(screen.getByTestId("mode-modal")).toHaveAttribute("data-mode", "mock");
   expect(api.calls.filter((c) => c.method === "POST" && !/\/test$/.test(c.url))).toEqual([]); // only the mock demo's own test, no Live call
   expect(screen.queryByTestId("refusal")).toBeNull();
 });
@@ -293,7 +331,7 @@ test("the call view shows the request and the response through the shared JsonPa
 test("tool page: environmentId prefilled, JSON/Form toggle, snake_case warning, read runs directly", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(200, { class: "read", warnings: [], result: { content: [{ type: "text", text: "<b>two users</b>" }] } }) } });
   go("#/tool/getEmailDeliverySettings");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   const env = await screen.findByLabelText(/environmentId/);
   expect(env).toHaveValue("11111111-2222-4333-8444-555555555555");
@@ -338,7 +376,7 @@ test("the talk track starts closed on a working page and open on the Stories pag
 test("a blocked write shows why and sends exactly one call", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(403, { error: "writes_disabled", message: '"createUser" is a write tool. Turn on "allow writes".', class: "write", warnings: [] }) } });
   go("#/tool/createFidoPolicy");
-  render(<App />);
+  render(<App />); dismissModal();
   await userEvent.setup().click(await screen.findByRole("button", { name: "Call" }));
   expect(await screen.findByRole("heading", { name: /Blocked: writes are off/ })).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -351,7 +389,7 @@ test("an enabled write opens the confirm dialog with exact arguments and hash, t
     ? json(409, { error: "confirm_required", argsHash: "abc123hash", arguments: b.arguments, requiresTypedName: false })
     : json(200, { class: "write", warnings: [], result: { ok: true } })) } });
   go("#/tool/createFidoPolicy");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText(/^name/), "pat");
   await user.click(screen.getByRole("button", { name: "Call" }));
@@ -370,7 +408,7 @@ test("a destructive confirm needs the tool name typed; Cancel and Escape send no
     ? json(409, { error: "confirm_required", argsHash: "h1", arguments: b.arguments, requiresTypedName: true })
     : json(200, { class: "destructive", warnings: [], result: { deleted: "u1" } })) } });
   go("#/tool/deleteFidoPolicy");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Call" }));
   let dlg = await screen.findByRole("dialog");
@@ -414,7 +452,7 @@ test("raw console: a free method runs; tools/call goes through the confirm gate"
   let rpc = 0;
   const api = fakeApi({ conns: [conn({ allowWrites: true })], handlers: { "POST /api/connections/:id/rpc": (b, s, json) => (b.method === "tools/list" ? json(200, { result: { tools: [] } }) : ++rpc === 1 ? json(409, { error: "confirm_required", argsHash: "rh", arguments: { x: 1 }, requiresTypedName: false }) : json(200, { class: "write", result: { ok: 1 } })) } });
   go("#/raw");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Send" }));
   expect(await screen.findByTestId("call-view")).toHaveTextContent('"tools"');

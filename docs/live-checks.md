@@ -27,7 +27,7 @@ Nothing in this repo has talked to a real PingOne tenant. Run these yourself, wi
 
 ## Stop if
 
-- The connection banner says **real server** and you do not recognise the environment id, or it is a tenant you do not own or are not allowed to change.
+- The Live modal and the "In use" line say **real server** and you do not recognise the environment id, or it is a tenant you do not own or are not allowed to change.
 - Any tool you did not expect appears as **read** but its name or description says it changes something (the classification is a heuristic; a mislabelled read tool would run without a gate). Stop, do not call it, and record its name.
 - A token, client secret or authorization code appears anywhere in the page, a log or the audit log (that is a bug in this tool; stop and report it).
 - The sign-in asks for a step the dialog cannot show (a passkey, an external identity provider), the token request answers `invalid_client` (the application is confidential), or PingOne refuses to open the flow (the message names the HTTP status and reason).

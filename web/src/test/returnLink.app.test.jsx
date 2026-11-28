@@ -34,13 +34,13 @@ describe("return link", () => {
     for (const [h, f] of pins) expect(createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex"), f).toBe(h);
   });
 
-  it("?from=customer-agent: banner first, strip right below, header Back in the tools", async () => {
+  it("?from=customer-agent: the writes state first, strip right below, header Back in the tools", async () => {
     fakeApi();
     window.history.replaceState(null, "", "/?from=customer-agent&uc=UC-LEARN2&vertical=banking");
     render(<App />);
     const note = await screen.findByRole("note", NOTE);
     expect(note.textContent).toContain("UC-LEARN2");
-    expect(screen.getByTestId("banner").nextElementSibling).toBe(note);
+    expect(screen.getByTestId("writes-state").nextElementSibling).toBe(note);
     expect(document.querySelector(".top__tools button.return-link--header")).not.toBeNull();
     expect(screen.getAllByRole("button", { name: /Back to Customer Agent LAB/ })).toHaveLength(2);
   });
@@ -50,7 +50,7 @@ describe("return link", () => {
       fakeApi();
       window.history.replaceState(null, "", q);
       render(<App />);
-      await screen.findByTestId("banner");
+      await screen.findByTestId("writes-state");
       expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
       expect(screen.queryByRole("note", NOTE)).toBeNull();
       cleanup();

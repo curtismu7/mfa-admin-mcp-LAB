@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { configure } from "@testing-library/dom";
+import { afterEach } from "vitest";
+
+// The Real-or-mock modal remembers "Got it" in sessionStorage: every test starts with it open again.
+afterEach(() => { try { sessionStorage.clear(); } catch { /* none */ } });
 
 // Role queries walk the whole DOM and are slow on a loaded machine: give findBy/waitFor room instead of racing the default 1 s.
 configure({ asyncUtilTimeout: 5000 });
