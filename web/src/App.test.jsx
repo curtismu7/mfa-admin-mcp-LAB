@@ -10,6 +10,8 @@ beforeEach(() => { window.location.hash = ""; try { localStorage.clear(); } catc
 const pressLive = async (user) => { await waitFor(() => expect(screen.getByTestId("mode-select").querySelector('option[value="real"]').disabled).toBe(false)); await user.selectOptions(screen.getByTestId("mode-select"), "real"); };
 const live = () => { try { localStorage.setItem("mfaadm.mode", "live"); } catch { /* none */ } };
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+// The Real-or-mock modal is itself a role="dialog": tests that query the confirm dialog close it first.
+const dismissModal = () => { const ok = screen.queryByTestId("mode-modal-ok"); if (ok) fireEvent.click(ok); };
 const go = (h) => { window.location.hash = h; window.dispatchEvent(new HashChangeEvent("hashchange")); };
 
 test("skip link, nav, Live and writes states: the Live modal says REAL and UNVERIFIED, the page names the connection in use, writes enabled is a red alert", async () => {
@@ -329,7 +331,7 @@ test("the call view shows the request and the response through the shared JsonPa
 test("tool page: environmentId prefilled, JSON/Form toggle, snake_case warning, read runs directly", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(200, { class: "read", warnings: [], result: { content: [{ type: "text", text: "<b>two users</b>" }] } }) } });
   go("#/tool/getEmailDeliverySettings");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   const env = await screen.findByLabelText(/environmentId/);
   expect(env).toHaveValue("11111111-2222-4333-8444-555555555555");
@@ -374,7 +376,7 @@ test("the talk track starts closed on a working page and open on the Stories pag
 test("a blocked write shows why and sends exactly one call", async () => {
   const api = fakeApi({ handlers: { "POST /api/connections/:id/call": (b, s, json) => json(403, { error: "writes_disabled", message: '"createUser" is a write tool. Turn on "allow writes".', class: "write", warnings: [] }) } });
   go("#/tool/createFidoPolicy");
-  render(<App />);
+  render(<App />); dismissModal();
   await userEvent.setup().click(await screen.findByRole("button", { name: "Call" }));
   expect(await screen.findByRole("heading", { name: /Blocked: writes are off/ })).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -387,7 +389,7 @@ test("an enabled write opens the confirm dialog with exact arguments and hash, t
     ? json(409, { error: "confirm_required", argsHash: "abc123hash", arguments: b.arguments, requiresTypedName: false })
     : json(200, { class: "write", warnings: [], result: { ok: true } })) } });
   go("#/tool/createFidoPolicy");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText(/^name/), "pat");
   await user.click(screen.getByRole("button", { name: "Call" }));
@@ -406,7 +408,7 @@ test("a destructive confirm needs the tool name typed; Cancel and Escape send no
     ? json(409, { error: "confirm_required", argsHash: "h1", arguments: b.arguments, requiresTypedName: true })
     : json(200, { class: "destructive", warnings: [], result: { deleted: "u1" } })) } });
   go("#/tool/deleteFidoPolicy");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Call" }));
   let dlg = await screen.findByRole("dialog");
@@ -450,7 +452,7 @@ test("raw console: a free method runs; tools/call goes through the confirm gate"
   let rpc = 0;
   const api = fakeApi({ conns: [conn({ allowWrites: true })], handlers: { "POST /api/connections/:id/rpc": (b, s, json) => (b.method === "tools/list" ? json(200, { result: { tools: [] } }) : ++rpc === 1 ? json(409, { error: "confirm_required", argsHash: "rh", arguments: { x: 1 }, requiresTypedName: false }) : json(200, { class: "write", result: { ok: 1 } })) } });
   go("#/raw");
-  render(<App />);
+  render(<App />); dismissModal();
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Send" }));
   expect(await screen.findByTestId("call-view")).toHaveTextContent('"tools"');
